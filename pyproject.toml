@@ -1,7 +1,7 @@
 [project]
 name = "speckbot-ai"
 version = "0.1.0"
-description = "A lightweight, personal AI assistant that connects to Claude, GPT, Gemini, and any OpenAI-compatible API via Telegram, Discord, or CLI"
+description = "A lightweight, personal AI assistant with a robust memory system."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 license = {text = "MIT"}
