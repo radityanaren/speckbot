@@ -1,0 +1,6 @@
+"""
+SpeckBot - A lightweight personal AI assistant
+"""
+
+__version__ = "0.1.0"
+__logo__ = "🐜"

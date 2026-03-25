@@ -1,0 +1,95 @@
+[project]
+name = "speckbot-ai"
+version = "0.1.0"
+description = "A lightweight, personal AI assistant that connects to Claude, GPT, Gemini, and any OpenAI-compatible API via Telegram, Discord, or CLI"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "SpeckBot Contributors"}
+]
+keywords = ["ai", "agent", "chatbot", "telegram", "discord", "claude", "openai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+urls = { Homepage = "https://github.com/radityanaren/speckbot", Repository = "https://github.com/radityanaren/speckbot" }
+
+dependencies = [
+    "typer>=0.20.0,<1.0.0",
+    "litellm>=1.82.1,<2.0.0",
+    "pydantic>=2.12.0,<3.0.0",
+    "pydantic-settings>=2.12.0,<3.0.0",
+    "websockets>=16.0,<17.0",
+    "websocket-client>=1.9.0,<2.0.0",
+    "httpx>=0.28.0,<1.0.0",
+    "ddgs>=9.5.5,<10.0.0",
+    "loguru>=0.7.3,<1.0.0",
+    "readability-lxml>=0.8.4,<1.0.0",
+    "rich>=14.0.0,<15.0.0",
+    "croniter>=6.0.0,<7.0.0",
+    "python-telegram-bot[socks]>=22.6,<23.0",
+    "socksio>=1.0.0,<2.0.0",
+    "python-socketio>=5.16.0,<6.0.0",
+    "msgpack>=1.1.0,<2.0.0",
+    "prompt-toolkit>=3.0.50,<4.0.0",
+    "questionary>=2.0.0,<3.0.0",
+    "mcp>=1.26.0,<2.0.0",
+    "json-repair>=0.57.0,<1.0.0",
+    "chardet>=3.0.2,<6.0.0",
+    "openai>=2.8.0",
+    "tiktoken>=0.12.0,<1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.0,<10.0.0",
+    "pytest-asyncio>=1.3.0,<2.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+speckbot = "speckbot.cli.commands:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build]
+include = [
+    "speckbot/**/*.py",
+    "speckbot/templates/**/*.md",
+    "speckbot/skills/**/*.md",
+    "speckbot/skills/**/*.sh",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["speckbot"]
+
+[tool.hatch.build.targets.wheel.sources]
+"speckbot" = "speckbot"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "speckbot/",
+    "README.md",
+    "LICENSE",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
