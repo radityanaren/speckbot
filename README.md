@@ -1,6 +1,6 @@
 # SpeckBot 🐜
 
-A lightweight, personal AI assistant with a robust memory system, highly inspired by [nanobot](https://github.com/HKUDS/nanobot).
+A lightweight, personal AI agent with a robust memory system, highly inspired by [nanobot](https://github.com/HKUDS/nanobot).
 
 **Key Features:**
 - 🤖 Connect to Claude, GPT, Gemini, and any OpenAI-compatible API
