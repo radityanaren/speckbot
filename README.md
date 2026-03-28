@@ -717,6 +717,7 @@ SpeckBot supports MCP servers for:
 - **Filesystem** - Read/write files on your computer
 - **GitHub** - Interact with GitHub repos
 - **Brave Search** - Web search
+- **Playwright** - Browser automation
 - **Custom** - Any MCP-compatible server
 
 ### Via Wizard
@@ -729,9 +730,9 @@ SpeckBot supports MCP servers for:
 {
   "tools": {
     "mcpServers": {
-      "filesystem": {
+      "playwright": {
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path"],
+        "args": ["@playwright/mcp@latest"],
         "enabledTools": ["*"]
       }
     }
@@ -765,6 +766,9 @@ npm install -g @modelcontextprotocol/server-github
 
 # Brave Search
 npm install -g @modelcontextprotocol/server-brave-search
+
+# Playwright browser automation
+npm install -g @playwright/mcp
 ```
 
 #### 2. Add to Config
@@ -789,24 +793,18 @@ npm install -g @modelcontextprotocol/server-brave-search
 speckbot gateway
 ```
 
----
+#### Playwright MCP (Browser Automation)
 
-### Playwright MCP (Browser Automation)
+[Playwright MCP](https://github.com/microsoft/playwright-mcp) provides browser automation using Playwright's accessibility tree.
 
-[Playwright MCP](https://github.com/microsoft/playwright-mcp) provides browser automation capabilities using Playwright's accessibility tree. It enables the agent to:
-- Navigate to URLs and interact with web pages
-- Take snapshots of pages for context
-- Fill forms, click buttons, and automate web interactions
-- Take screenshots and capture console messages
-
-#### 1. Install Dependencies
+##### 1. Install Dependencies
 
 ```bash
-# Playwright browsers (if not already installed)
+# Install Playwright browsers
 npx playwright install chromium
 ```
 
-#### 2. Add to Config
+##### 2. Add to Config
 
 ```json
 {
@@ -822,46 +820,20 @@ npx playwright install chromium
 }
 ```
 
-#### Configuration Options
-
-Playwright MCP supports many options:
+Common options:
 
 | Option | Description |
 |--------|-------------|
-| `--headless` | Run browser in headless mode (default: false) |
-| `--browser` | Browser to use: chrome, firefox, webkit, msedge |
-| `--allowed-hosts` | Comma-separated list of allowed hosts |
-| `--proxy-server` | Proxy server URL |
-| `--viewport-size` | Browser viewport (e.g., "1280x720") |
-| `--isolated` | Keep browser profile in memory (no persistence) |
+| `--headless` | Run browser headless |
+| `--browser` | chrome, firefox, webkit, msedge |
+| `--viewport-size` | e.g., "1280x720" |
+| `--isolated` | No browser profile persistence |
 
-Example with options:
+##### 3. Restart SpeckBot
 
-```json
-{
-  "tools": {
-    "mcpServers": {
-      "playwright": {
-        "command": "npx",
-        "args": [
-          "@playwright/mcp@latest",
-          "--headless",
-          "--browser", "chromium",
-          "--viewport-size", "1280x720"
-        ],
-        "enabledTools": ["*"]
-      }
-    }
-  }
-}
+```bash
+speckbot gateway
 ```
-
-#### Available Tools
-
-Once configured, the agent can use these tools:
-- `browser_navigate` - Navigate to a URL
-- `browser_snapshot` - Capture page accessibility snapshot
-- `browser_click` - Click on elements
 - `browser_type` - Type text into elements
 - `browser_fill_form` - Fill multiple form fields
 - `browser_take_screenshot` - Take a screenshot
