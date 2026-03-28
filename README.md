@@ -785,6 +785,92 @@ speckbot gateway
 
 ---
 
+### Playwright MCP (Browser Automation)
+
+[Playwright MCP](https://github.com/microsoft/playwright-mcp) provides browser automation capabilities using Playwright's accessibility tree. It enables the agent to:
+- Navigate to URLs and interact with web pages
+- Take snapshots of pages for context
+- Fill forms, click buttons, and automate web interactions
+- Take screenshots and capture console messages
+
+#### 1. Install Dependencies
+
+```bash
+# Playwright browsers (if not already installed)
+npx playwright install chromium
+```
+
+#### 2. Add to Config
+
+```json
+{
+  "tools": {
+    "mcpServers": {
+      "playwright": {
+        "command": "npx",
+        "args": ["@playwright/mcp@latest"],
+        "enabledTools": ["*"]
+      }
+    }
+  }
+}
+```
+
+#### Configuration Options
+
+Playwright MCP supports many options:
+
+| Option | Description |
+|--------|-------------|
+| `--headless` | Run browser in headless mode (default: false) |
+| `--browser` | Browser to use: chrome, firefox, webkit, msedge |
+| `--allowed-hosts` | Comma-separated list of allowed hosts |
+| `--proxy-server` | Proxy server URL |
+| `--viewport-size` | Browser viewport (e.g., "1280x720") |
+| `--isolated` | Keep browser profile in memory (no persistence) |
+
+Example with options:
+
+```json
+{
+  "tools": {
+    "mcpServers": {
+      "playwright": {
+        "command": "npx",
+        "args": [
+          "@playwright/mcp@latest",
+          "--headless",
+          "--browser", "chromium",
+          "--viewport-size", "1280x720"
+        ],
+        "enabledTools": ["*"]
+      }
+    }
+  }
+}
+```
+
+#### Available Tools
+
+Once configured, the agent can use these tools:
+- `browser_navigate` - Navigate to a URL
+- `browser_snapshot` - Capture page accessibility snapshot
+- `browser_click` - Click on elements
+- `browser_type` - Type text into elements
+- `browser_fill_form` - Fill multiple form fields
+- `browser_take_screenshot` - Take a screenshot
+- `browser_console_messages` - Get console messages
+- `browser_network_requests` - List network requests
+- And more...
+
+#### 3. Restart SpeckBot
+
+```bash
+speckbot gateway
+```
+
+---
+
 ## Custom Tool Setup
 
 Tools are Python functions the agent can call during conversation.
