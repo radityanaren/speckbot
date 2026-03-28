@@ -17,7 +17,7 @@ from speckbot.shared.mixins import GroupPolicyMixin
 from speckbot.config.paths import get_media_dir
 from speckbot.config.schema import Base
 from speckbot.utils.helpers import split_message
-from speckbot.utils.constants import DISCORD_DISCORD_MAX_MESSAGE_LEN, DISCORD_DISCORD_MAX_ATTACHMENT_BYTES
+from speckbot.utils.constants import DISCORD_MAX_MESSAGE_LEN, DISCORD_MAX_ATTACHMENT_BYTES
 
 DISCORD_API_BASE = "https://discord.com/api/v10"
 
