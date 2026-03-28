@@ -305,7 +305,13 @@ Here's the full `config.json` structure (as shown by `speckbot onboard`):
       "groqApiKey": ""
     },
     "restrictToWorkspace": false,
-    "mcpServers": {}
+    "mcpServers": {
+      "playwright": {
+        "command": "npx",
+        "args": ["@playwright/mcp@latest"],
+        "enabledTools": ["*"]
+      }
+    }
   }
 }
 ```
