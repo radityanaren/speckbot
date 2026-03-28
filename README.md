@@ -641,7 +641,6 @@ Located in `speckbot/skills/`:
 | **clawhub** | Search and install skills from ClawHub registry |
 | **skill-creator** | Create new skills with guidance |
 | **github** | GitHub integration helper |
-| **puppeteer** | Browser automation using Puppeteer |
 
 ### Via ClawHub (Natural Language)
 
