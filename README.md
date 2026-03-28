@@ -641,6 +641,7 @@ Located in `speckbot/skills/`:
 | **clawhub** | Search and install skills from ClawHub registry |
 | **skill-creator** | Create new skills with guidance |
 | **github** | GitHub integration helper |
+| **puppeteer** | Browser automation using Puppeteer |
 
 ### Via ClawHub (Natural Language)
 
@@ -653,16 +654,13 @@ User: "install the web-research skill"
 Commands:
 ```bash
 # Search
-npx --yes clawhub@latest search "web scraping" --limit 5
+npx --yes clawhub@latest search "web"
 
 # Install
 npx --yes clawhub@latest install <slug> --workdir ~/.speckbot/workspace
 
-# Update all
-npx --yes clawhub@latest update --all --workdir ~/.speckbot/workspace
-
-# List installed
-npx --yes clawhub@latest list --workdir ~/.speckbot/workspace
+# Update
+npx --yes clawhub@latest update <slug> --workdir ~/.speckbot/workspace
 ```
 
 ### Manual Skill Setup
@@ -709,16 +707,13 @@ Detailed instructions for when and how to use this skill.
 
 ## MCP Server Setup
 
-MCP (Model Context Protocol) servers add external tool capabilities.
+MCP (Model Context Protocol) servers add external tool capabilities to SpeckBot.
 
-### What MCP Adds
+### Built-in MCP Servers
 
-SpeckBot supports MCP servers for:
-- **Filesystem** - Read/write files on your computer
-- **GitHub** - Interact with GitHub repos
-- **Brave Search** - Web search
-- **Playwright** - Browser automation
-- **Custom** - Any MCP-compatible server
+| Server | Description |
+|--------|-------------|
+| **playwright** | Browser automation using Playwright |
 
 ### Via Wizard
 
@@ -740,87 +735,26 @@ SpeckBot supports MCP servers for:
 }
 ```
 
-### MCP Config Options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `type` | str | null | `"stdio"`, `"sse"`, or `"streamableHttp"` (auto-detected) |
-| `command` | str | "" | Command to run (e.g., `"npx"`, `"python"`) |
-| `args` | list | [] | Command arguments |
-| `env` | dict | {} | Environment variables |
-| `url` | str | "" | HTTP endpoint for SSE/streamable |
-| `headers` | dict | {} | Custom HTTP headers |
-| `toolTimeout` | int | 30 | Seconds before tool call is cancelled |
-| `enabledTools` | list | ["*"] | Tools to expose (`["*"]` = all) |
-
-### Custom MCP Server Setup
-
-#### 1. Install the MCP Server
+### Install
 
 ```bash
-# Filesystem access
-npm install -g @modelcontextprotocol/server-filesystem
-
-# GitHub integration
-npm install -g @modelcontextprotocol/server-github
-
-# Brave Search
-npm install -g @modelcontextprotocol/server-brave-search
-
-# Playwright browser automation
+# Browser automation
 npm install -g @playwright/mcp
-```
-
-#### 2. Add to Config
-
-```json
-{
-  "tools": {
-    "mcpServers": {
-      "my-server": {
-        "command": "npx",
-        "args": ["-y", "@mcp/server"],
-        "enabledTools": ["*"]
-      }
-    }
-  }
-}
-```
-
-#### 3. Restart SpeckBot
-
-```bash
-speckbot gateway
-```
-
-#### Playwright MCP (Browser Automation)
-
-[Playwright MCP](https://github.com/microsoft/playwright-mcp) provides browser automation using Playwright's accessibility tree.
-
-##### 1. Install Dependencies
-
-```bash
-# Install Playwright browsers
 npx playwright install chromium
 ```
 
-##### 2. Add to Config
+### Config Options
 
-```json
-{
-  "tools": {
-    "mcpServers": {
-      "playwright": {
-        "command": "npx",
-        "args": ["@playwright/mcp@latest"],
-        "enabledTools": ["*"]
-      }
-    }
-  }
-}
-```
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `type` | str | auto | `"stdio"`, `"sse"`, or `"streamableHttp"` |
+| `command` | str | "" | Command to run |
+| `args` | list | [] | Command arguments |
+| `enabledTools` | list | ["*"] | Tools to expose |
 
-Common options:
+### Common Playwright Options
+
+Add to `args` array:
 
 | Option | Description |
 |--------|-------------|
@@ -829,10 +763,20 @@ Common options:
 | `--viewport-size` | e.g., "1280x720" |
 | `--isolated` | No browser profile persistence |
 
-##### 3. Restart SpeckBot
+Example:
 
-```bash
-speckbot gateway
+```json
+{
+  "tools": {
+    "mcpServers": {
+      "playwright": {
+        "command": "npx",
+        "args": ["@playwright/mcp@latest", "--headless", "--browser", "chromium"],
+        "enabledTools": ["*"]
+      }
+    }
+  }
+}
 ```
 - `browser_type` - Type text into elements
 - `browser_fill_form` - Fill multiple form fields
