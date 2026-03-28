@@ -16,12 +16,7 @@ from speckbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from speckbot.providers.registry import find_by_model, find_gateway
 
 # Pattern to strip thinking blocks from model output
-_THINK_BLOCK_PATTERN = re.compile(r"<think>[\s\S]*?
-</think>
-
-
-")
-
+_THINK_BLOCK_PATTERN = re.compile(r"<thinking>[\s\S]*?</thinking>|<anthropic>[\s\S]*?</anthropic>")
 
 def _strip_think_blocks(text: str | None) -> str | None:
     """Strip think/reasoning blocks from model output.
