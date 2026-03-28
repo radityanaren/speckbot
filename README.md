@@ -900,13 +900,13 @@ speckbot/
 │   ├── litellm_provider.py  # LiteLLM wrapper
 │   └── registry.py      # Provider registry
 ├── shared/               # Shared utilities
-│   └── mixins.py        # Common mixins (GroupPolicyMixin, TypingIndicatorMixin)
+│   └── mixins.py        # Common mixins (GroupPolicyMixin)
 ├── skills/               # Built-in skills
 │   ├── clawhub/         # ClawHub skill marketplace
 │   ├── skill-creator/   # Skill creation helper
 │   └── github/          # GitHub integration
 └── utils/               # Utilities
-    ├── constants.py     # Magic numbers
+    ├── constants.py     # Centralized constants (timeouts, limits, etc.)
     └── helpers.py       # Helper functions
 ```
 
@@ -952,11 +952,12 @@ User Message (Telegram/Discord/CLI)
 ### Key Design Decisions
 
 1. **Centralized Commands**: All command definitions live in `commands.py` — no duplication
-2. **Provider Abstraction**: LiteLLM handles provider differences
-3. **Async Channels**: Telegram and Discord use async I/O
-4. **Tool Registry**: Tools self-register, easy to extend
-5. **Memory as Files**: Simple filesystem storage, survives restarts
-6. **Auto-Discovery**: Channels are auto-detected from `speckbot/channels/`
+2. **Centralized Constants**: All magic numbers live in `constants.py` — easy to find and modify
+3. **Provider Abstraction**: LiteLLM handles provider differences
+4. **Async Channels**: Telegram and Discord use async I/O
+5. **Tool Registry**: Tools self-register, easy to extend
+6. **Memory as Files**: Simple filesystem storage, survives restarts
+7. **Auto-Discovery**: Channels are auto-detected from `speckbot/channels/`
 
 ---
 
