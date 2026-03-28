@@ -17,11 +17,9 @@ from speckbot.shared.mixins import GroupPolicyMixin
 from speckbot.config.paths import get_media_dir
 from speckbot.config.schema import Base
 from speckbot.utils.helpers import split_message
-from speckbot.utils.constants import DISCORD_MAX_MESSAGE_LEN, DISCORD_MAX_ATTACHMENT_BYTES
+from speckbot.utils.constants import DISCORD_DISCORD_MAX_MESSAGE_LEN, DISCORD_DISCORD_MAX_ATTACHMENT_BYTES
 
 DISCORD_API_BASE = "https://discord.com/api/v10"
-MAX_MESSAGE_LEN = DISCORD_MAX_MESSAGE_LEN
-MAX_ATTACHMENT_BYTES = DISCORD_MAX_ATTACHMENT_BYTES
 
 
 class DiscordConfig(Base):
@@ -128,11 +126,11 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
                     failed_media.append(Path(media_path).name)
 
             # Send text content
-            chunks = split_message(msg.content or "", MAX_MESSAGE_LEN)
+            chunks = split_message(msg.content or "", DISCORD_MAX_MESSAGE_LEN)
             if not chunks and failed_media and not sent_media:
                 chunks = split_message(
                     "\n".join(f"[attachment: {name} - send failed]" for name in failed_media),
-                    MAX_MESSAGE_LEN,
+                    DISCORD_MAX_MESSAGE_LEN,
                 )
             if not chunks:
                 return
@@ -185,7 +183,7 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
             logger.warning("Discord file not found, skipping: {}", file_path)
             return False
 
-        if path.stat().st_size > MAX_ATTACHMENT_BYTES:
+        if path.stat().st_size > DISCORD_MAX_ATTACHMENT_BYTES:
             logger.warning("Discord file too large (>20MB), skipping: {}", path.name)
             return False
 
@@ -331,7 +329,7 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
             size = attachment.get("size") or 0
             if not url or not self._http:
                 continue
-            if size and size > MAX_ATTACHMENT_BYTES:
+            if size and size > DISCORD_MAX_ATTACHMENT_BYTES:
                 content_parts.append(f"[attachment: {filename} - too large]")
                 continue
             try:
@@ -375,6 +373,31 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
                 "reply_to": reply_to,
             },
         )
+
+    def _was_mentioned(
+        self,
+        content: str,
+        mentions: list[dict[str, Any]] | None = None,
+    ) -> bool:
+        """Check if the bot was mentioned in the Discord message.
+
+        Discord uses <@USER_ID> and <@!USER_ID> (nickname) mention formats.
+        """
+        bot_id = self.bot_user_id
+        if not bot_id:
+            return False
+
+        # Check mentions array from Discord payload
+        if mentions:
+            for mention in mentions:
+                if str(mention.get("id")) == bot_id:
+                    return True
+
+        # Check content for Discord mention format <@USER_ID> or <@!USER_ID>
+        if f"<@{bot_id}>" in content or f"<@!{bot_id}>" in content:
+            return True
+
+        return False
 
     def _should_respond_in_group(self, payload: dict[str, Any], content: str) -> bool:
         """Check if bot should respond in a group channel based on policy.

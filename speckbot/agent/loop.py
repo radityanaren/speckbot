@@ -214,11 +214,11 @@ class AgentLoop:
 
             if response.has_tool_calls:
                 if on_progress:
-                    thought = self._strip_think(response.content)
+                    # Content already cleaned by provider
+                    thought = response.content
                     if thought:
                         await on_progress(thought)
                     tool_hint = self._tool_hint(response.tool_calls)
-                    tool_hint = self._strip_think(tool_hint)
                     await on_progress(tool_hint, tool_hint=True)
 
                 tool_call_dicts = [tc.to_openai_tool_call() for tc in response.tool_calls]
@@ -239,7 +239,8 @@ class AgentLoop:
                         messages, tool_call.id, tool_call.name, result
                     )
             else:
-                clean = self._strip_think(response.content)
+                # Content already cleaned by provider
+                clean = response.content
                 # Don't persist error responses to session history — they can
                 # poison the context and cause permanent 400 loops (#1303).
                 if response.finish_reason == "error":
@@ -381,7 +382,7 @@ class AgentLoop:
         self,
         msg: InboundMessage,
         session_key: str | None = None,
-        on_progress: Callable[[str], Awaitable[None]] | None = None,
+        on_progress: Callable[..., Awaitable[None]] | None = None,
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
         # System messages: parse origin from chat_id ("channel:chat_id")
@@ -496,15 +497,12 @@ class AgentLoop:
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
-            meta = dict(msg.metadata or {})
-            meta["_progress"] = True
-            meta["_tool_hint"] = tool_hint
             await self.bus.publish_outbound(
                 OutboundMessage(
                     channel=msg.channel,
                     chat_id=msg.chat_id,
                     content=content,
-                    metadata=meta,
+                    progress_type="tool_hint" if tool_hint else "thought",
                 )
             )
 
@@ -587,7 +585,7 @@ class AgentLoop:
         session_key: str = "cli:direct",
         channel: str = "cli",
         chat_id: str = "direct",
-        on_progress: Callable[[str], Awaitable[None]] | None = None,
+        on_progress: Callable[..., Awaitable[None]] | None = None,
     ) -> str:
         """Process a message directly (for CLI or cron usage)."""
         await self._connect_mcp()

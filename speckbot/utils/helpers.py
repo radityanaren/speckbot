@@ -5,9 +5,12 @@ import re
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import tiktoken
+
+if TYPE_CHECKING:
+    from speckbot.providers.base import LLMProvider
 
 
 def normalize_path_component(s: str) -> str:
@@ -176,7 +179,7 @@ def estimate_message_tokens(message: dict[str, Any]) -> int:
 
 
 def estimate_prompt_tokens_chain(
-    provider: Any,
+    provider: "LLMProvider",
     model: str | None,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,

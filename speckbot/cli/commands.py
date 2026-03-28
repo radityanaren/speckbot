@@ -805,12 +805,12 @@ def agent(
                 while True:
                     try:
                         msg = await asyncio.wait_for(bus.consume_outbound(), timeout=1.0)
-                        if msg.metadata.get("_progress"):
-                            is_tool_hint = msg.metadata.get("_tool_hint", False)
+                        # Check progress messages using the progress_type field
+                        if msg.progress_type:
                             ch = agent_loop.channels_config
-                            if ch and is_tool_hint and not ch.send_tool_hints:
+                            if msg.progress_type == "tool_hint" and ch and not ch.send_tool_hints:
                                 pass
-                            elif ch and not is_tool_hint and not ch.send_progress:
+                            elif msg.progress_type == "thought" and ch and not ch.send_progress:
                                 pass
                             else:
                                 await _print_interactive_progress_line(msg.content, _thinking)
@@ -1015,17 +1015,6 @@ provider_app = typer.Typer(help="Manage providers")
 app.add_typer(provider_app, name="provider")
 
 
-_LOGIN_HANDLERS: dict[str, callable] = {}
-
-
-def _register_login(name: str):
-    def decorator(fn):
-        _LOGIN_HANDLERS[name] = fn
-        return fn
-
-    return decorator
-
-
 @provider_app.command("login")
 def provider_login(
     provider: str = typer.Argument(
@@ -1042,7 +1031,7 @@ def provider_login(
         console.print(f"[red]Unknown OAuth provider: {provider}[/red]  Supported: {names}")
         raise typer.Exit(1)
 
-    handler = _LOGIN_HANDLERS.get(spec.name)
+    handler = LOGIN_HANDLERS.get(spec.name)
     if not handler:
         console.print(f"[red]Login not implemented for {spec.label}[/red]")
         raise typer.Exit(1)
@@ -1051,7 +1040,7 @@ def provider_login(
     handler()
 
 
-@_register_login("openai_codex")
+# Login handlers - simple dict instead of decorator pattern
 def _login_openai_codex() -> None:
     try:
         from oauth_cli_kit import get_token, login_oauth_interactive
@@ -1078,7 +1067,6 @@ def _login_openai_codex() -> None:
         raise typer.Exit(1)
 
 
-@_register_login("github_copilot")
 def _login_github_copilot() -> None:
     import asyncio
 
@@ -1099,6 +1087,13 @@ def _login_github_copilot() -> None:
     except Exception as e:
         console.print(f"[red]Authentication error: {e}[/red]")
         raise typer.Exit(1)
+
+
+# Login handlers registry - simple dict for extensibility
+LOGIN_HANDLERS: dict[str, callable] = {
+    "openai_codex": _login_openai_codex,
+    "github_copilot": _login_github_copilot,
+}
 
 
 if __name__ == "__main__":

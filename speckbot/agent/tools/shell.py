@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from speckbot.agent.tools.base import Tool
+from speckbot.utils.constants import SHELL_MAX_TIMEOUT, SHELL_MAX_OUTPUT
 
 
 class ExecTool(Tool):
@@ -41,9 +42,6 @@ class ExecTool(Tool):
     @property
     def name(self) -> str:
         return "exec"
-
-    _MAX_TIMEOUT = 600
-    _MAX_OUTPUT = 10_000
 
     @property
     def description(self) -> str:
@@ -84,7 +82,7 @@ class ExecTool(Tool):
         if guard_error:
             return guard_error
 
-        effective_timeout = min(timeout or self.timeout, self._MAX_TIMEOUT)
+        effective_timeout = min(timeout or self.timeout, SHELL_MAX_TIMEOUT)
 
         env = os.environ.copy()
         if self.path_append:
@@ -127,7 +125,7 @@ class ExecTool(Tool):
             result = "\n".join(output_parts) if output_parts else "(no output)"
 
             # Head + tail truncation to preserve both start and end of output
-            max_len = self._MAX_OUTPUT
+            max_len = SHELL_MAX_OUTPUT
             if len(result) > max_len:
                 half = max_len // 2
                 result = (

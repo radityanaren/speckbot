@@ -17,13 +17,15 @@ from speckbot.utils.helpers import (
     estimate_prompt_tokens_chain,
     normalize_path_component,
 )
+from speckbot.utils.constants import MAX_CONSOLIDATION_FAILURES, MAX_CONSOLIDATION_ROUNDS
 
 if TYPE_CHECKING:
     from speckbot.providers.base import LLMProvider
     from speckbot.session.manager import Session, SessionManager
 
 
-_SAVE_MEMORY_TOOL = [
+# Tool for consolidation (internal LLM call) - just save_memory
+_CONSOLIDATION_TOOL = [
     {
         "type": "function",
         "function": {
@@ -42,6 +44,10 @@ _SAVE_MEMORY_TOOL = [
             },
         },
     },
+]
+
+# Tools for the agent to use during normal conversation
+_AGENT_MEMORY_TOOLS = [
     {
         "type": "function",
         "function": {
@@ -108,6 +114,10 @@ _SAVE_MEMORY_TOOL = [
 ]
 
 
+# For backwards compatibility
+_SAVE_MEMORY_TOOL = _CONSOLIDATION_TOOL + _AGENT_MEMORY_TOOLS
+
+
 # Tool name to handler method mapping
 _MEMORY_TOOL_HANDLERS = {
     "save_memory": "_handle_save_memory",
@@ -153,7 +163,8 @@ class MemoryStore:
     - HISTORY.md - Date-indexed grep-searchable log of conversations
     """
 
-    _MAX_FAILURES_BEFORE_RAW_ARCHIVE = 3
+    # Use constants for thresholds
+    _max_failures = MAX_CONSOLIDATION_FAILURES
 
     def __init__(self, workspace: Path):
         self.workspace = workspace
@@ -317,7 +328,7 @@ class MemoryStore:
             forced = {"type": "function", "function": {"name": "save_memory"}}
             response = await provider.chat_with_retry(
                 messages=chat_messages,
-                tools=_SAVE_MEMORY_TOOL,
+                tools=_CONSOLIDATION_TOOL,
                 model=model,
                 tool_choice=forced,
             )
@@ -326,7 +337,7 @@ class MemoryStore:
                 logger.warning("Forced tool_choice unsupported, retrying with auto")
                 response = await provider.chat_with_retry(
                     messages=chat_messages,
-                    tools=_SAVE_MEMORY_TOOL,
+                    tools=_CONSOLIDATION_TOOL,
                     model=model,
                     tool_choice="auto",
                 )
@@ -449,7 +460,7 @@ class MemoryStore:
     def _fail_or_raw_archive(self, messages: list[dict]) -> bool:
         """Increment failure count; after threshold, raw-archive messages and return True."""
         self._consecutive_failures += 1
-        if self._consecutive_failures < self._MAX_FAILURES_BEFORE_RAW_ARCHIVE:
+        if self._consecutive_failures < self._max_failures:
             return False
         self._raw_archive(messages)
         self._consecutive_failures = 0
@@ -467,7 +478,8 @@ class MemoryStore:
 class MemoryConsolidator:
     """Owns consolidation policy, locking, and session offset updates."""
 
-    _MAX_CONSOLIDATION_ROUNDS = 5
+    # Use constants for limits
+    _max_rounds = MAX_CONSOLIDATION_ROUNDS
 
     def __init__(
         self,
@@ -539,7 +551,7 @@ class MemoryConsolidator:
         """Archive messages with guaranteed persistence (retries until raw-dump fallback)."""
         if not messages:
             return True
-        for _ in range(self.store._MAX_FAILURES_BEFORE_RAW_ARCHIVE):
+        for _ in range(self.store._max_failures):
             if await self.consolidate_messages(messages):
                 return True
         return True
@@ -565,7 +577,7 @@ class MemoryConsolidator:
                 )
                 return
 
-            for round_num in range(self._MAX_CONSOLIDATION_ROUNDS):
+            for round_num in range(self._max_rounds):
                 if estimated <= target:
                     return
 

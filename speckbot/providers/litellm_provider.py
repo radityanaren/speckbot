@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import re
 import secrets
 import string
 from typing import Any
@@ -13,6 +14,24 @@ from loguru import logger
 
 from speckbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from speckbot.providers.registry import find_by_model, find_gateway
+
+# Pattern to strip thinking blocks from model output
+_THINK_BLOCK_PATTERN = re.compile(r"<think>[\s\S]*?
+</think>
+
+
+")
+
+
+def _strip_think_blocks(text: str | None) -> str | None:
+    """Strip think/reasoning blocks from model output.
+
+    Some models (DeepSeek-R1, Qwen, etc.) embed thinking in their output
+    using<think>...</think>tags. This removes those blocks.
+    """
+    if not text:
+        return None
+    return _THINK_BLOCK_PATTERN.sub("", text).strip() or None
 
 # Standard chat-completion message keys.
 _ALLOWED_MSG_KEYS = frozenset({"role", "content", "tool_calls", "tool_call_id", "name", "reasoning_content"})
@@ -341,8 +360,11 @@ class LiteLLMProvider(LLMProvider):
         reasoning_content = getattr(message, "reasoning_content", None) or None
         thinking_blocks = getattr(message, "thinking_blocks", None) or None
 
+        # Strip think blocks from content before returning
+        cleaned_content = _strip_think_blocks(content)
+
         return LLMResponse(
-            content=content,
+            content=cleaned_content,
             tool_calls=tool_calls,
             finish_reason=finish_reason or "stop",
             usage=usage,

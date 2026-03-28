@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from speckbot.agent.tools.base import Tool
+from speckbot.utils.constants import FILESYSTEM_MAX_CHARS, FILESYSTEM_DEFAULT_LIMIT, LIST_DIR_DEFAULT_MAX
 
 
 def _resolve_path(
@@ -57,9 +58,6 @@ class _FsTool(Tool):
 class ReadFileTool(_FsTool):
     """Read file contents with optional line-based pagination."""
 
-    _MAX_CHARS = 128_000
-    _DEFAULT_LIMIT = 2000
-
     @property
     def name(self) -> str:
         return "read_file"
@@ -110,15 +108,15 @@ class ReadFileTool(_FsTool):
                 return f"Error: offset {offset} is beyond end of file ({total} lines)"
 
             start = offset - 1
-            end = min(start + (limit or self._DEFAULT_LIMIT), total)
+            end = min(start + (limit or FILESYSTEM_DEFAULT_LIMIT), total)
             numbered = [f"{start + i + 1}| {line}" for i, line in enumerate(all_lines[start:end])]
             result = "\n".join(numbered)
 
-            if len(result) > self._MAX_CHARS:
+            if len(result) > FILESYSTEM_MAX_CHARS:
                 trimmed, chars = [], 0
                 for line in numbered:
                     chars += len(line) + 1
-                    if chars > self._MAX_CHARS:
+                    if chars > FILESYSTEM_MAX_CHARS:
                         break
                     trimmed.append(line)
                 end = start + len(trimmed)
@@ -298,7 +296,6 @@ class EditFileTool(_FsTool):
 class ListDirTool(_FsTool):
     """List directory contents with optional recursion."""
 
-    _DEFAULT_MAX = 200
     _IGNORE_DIRS = {
         ".git", "node_modules", "__pycache__", ".venv", "venv",
         "dist", "build", ".tox", ".mypy_cache", ".pytest_cache",
@@ -347,7 +344,7 @@ class ListDirTool(_FsTool):
             if not dp.is_dir():
                 return f"Error: Not a directory: {path}"
 
-            cap = max_entries or self._DEFAULT_MAX
+            cap = max_entries or LIST_DIR_DEFAULT_MAX
             items: list[str] = []
             total = 0
 

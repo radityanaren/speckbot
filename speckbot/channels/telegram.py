@@ -24,7 +24,7 @@ from speckbot.security.network import validate_url_target
 from speckbot.utils.helpers import split_message
 from speckbot.utils.constants import TELEGRAM_MAX_MESSAGE_LEN
 
-TELEGRAM_REPLY_CONTEXT_MAX_LEN = TELEGRAM_MAX_MESSAGE_LEN  # Max length for reply context
+# Max length for reply context - use TELEGRAM_MAX_MESSAGE_LEN directly
 
 
 def _strip_md(s: str) -> str:
@@ -525,8 +525,8 @@ class TelegramChannel(BaseChannel):
         if not reply:
             return None
         text = getattr(reply, "text", None) or getattr(reply, "caption", None) or ""
-        if len(text) > TELEGRAM_REPLY_CONTEXT_MAX_LEN:
-            text = text[:TELEGRAM_REPLY_CONTEXT_MAX_LEN] + "..."
+        if len(text) > TELEGRAM_MAX_MESSAGE_LEN:
+            text = text[:TELEGRAM_MAX_MESSAGE_LEN] + "..."
         return f"[Reply to: {text}]" if text else None
 
     async def _download_message_media(

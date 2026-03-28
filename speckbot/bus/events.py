@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass
@@ -34,5 +34,7 @@ class OutboundMessage:
     reply_to: str | None = None
     media: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Progress type: "thought" for AI thoughts, "tool_hint" for tool call hints, None for final response
+    progress_type: Literal["thought", "tool_hint"] | None = None
 
 
