@@ -204,117 +204,29 @@ All configuration lives in `~/.speckbot/config.json`. You can configure it in tw
 
 ### Complete Config Structure
 
-Here's the full `config.json` structure (as shown by `speckbot onboard`):
+Here's the `config.json` structure (use `speckbot onboard` to configure):
 
 ```json
 {
-  "agents": {
-    "defaults": {
-      "workspace": "~/.speckbot/workspace",
-      "model": "anthropic/claude-opus-4-5",
-      "provider": "auto",
-      "maxTokens": 8192,
-      "contextWindowTokens": 65536,
-      "temperature": 0.1,
-      "maxToolIterations": 40,
-      "reasoningEffort": null
-    }
-  },
+  "agents": { "defaults": { "model": "...", "provider": "auto", ... } },
   "channels": {
     "sendProgress": true,
-    "sendToolHints": false,
-    "discord": {
-      "enabled": false,
-      "token": "",
-      "allowFrom": [],
-      "gatewayUrl": "wss://gateway.discord.gg/?v=10&encoding=json",
-      "intents": 37377,
-      "groupPolicy": "mention"
-    },
-    "telegram": {
-      "enabled": false,
-      "token": "",
-      "allowFrom": [],
-      "proxy": null,
-      "replyToMessage": false,
-      "groupPolicy": "mention",
-      "connectionPoolSize": 32,
-      "poolTimeout": 5.0
-    }
+    "discord": { "enabled": false, "token": "", ... },
+    "telegram": { "enabled": false, "token": "", ... }
   },
-  "providers": {
-    "custom": {
-      "apiKey": "",
-      "apiBase": null,
-      "extraHeaders": null
-    },
-    "anthropic": {
-      "apiKey": "",
-      "apiBase": null,
-      "extraHeaders": null
-    },
-    "openai": {
-      "apiKey": "",
-      "apiBase": null,
-      "extraHeaders": null
-    },
-    "openrouter": {
-      "apiKey": "",
-      "apiBase": null,
-      "extraHeaders": null
-    },
-    "deepseek": {
-      "apiKey": "",
-      "apiBase": null,
-      "extraHeaders": null
-    },
-    "ollama": {
-      "apiKey": "",
-      "apiBase": null,
-      "extraHeaders": null
-    },
-    "gemini": {
-      "apiKey": "",
-      "apiBase": null,
-      "extraHeaders": null
-    }
-  },
-  "gateway": {
-    "host": "0.0.0.0",
-    "port": 18790,
-    "heartbeat": {
-      "enabled": true,
-      "intervalS": 1800
-    }
-  },
+  "providers": { "openrouter": { "apiKey": "" }, ... },
+  "gateway": { "host": "0.0.0.0", "port": 18790 },
   "tools": {
-    "web": {
-      "proxy": null,
-      "search": {
-        "provider": "brave",
-        "apiKey": "",
-        "baseUrl": "",
-        "maxResults": 5
-      }
-    },
-    "exec": {
-      "timeout": 60,
-      "pathAppend": ""
-    },
-    "transcription": {
-      "groqApiKey": ""
-    },
-    "restrictToWorkspace": false,
+    "web": { "search": { "provider": "brave", "apiKey": "" } },
+    "exec": { "timeout": 60 },
     "mcpServers": {
-      "playwright": {
-        "command": "npx",
-        "args": ["@playwright/mcp@latest"],
-        "enabledTools": ["*"]
-      }
+      "playwright": { "command": "npx", "args": ["@playwright/mcp@latest"], "enabledTools": ["*"] }
     }
   }
 }
 ```
+
+Full config is shown during onboard wizard.
 
 ### Config Tips
 
@@ -775,14 +687,45 @@ Example:
   }
 }
 ```
-- `browser_type` - Type text into elements
-- `browser_fill_form` - Fill multiple form fields
-- `browser_take_screenshot` - Take a screenshot
-- `browser_console_messages` - Get console messages
-- `browser_network_requests` - List network requests
-- And more...
 
-#### 3. Restart SpeckBot
+### Adding a New MCP Server
+
+Want to add another MCP server? Here's how:
+
+#### 1. Find an MCP server
+
+Popular MCP servers:
+- [mcp-servers](https://github.com/modelcontextprotocol/servers) - Official registry
+- [awesome-mcp](https://github.com/sooperset/awesome-mcp) - Community list
+
+#### 2. Install the server
+
+```bash
+# Example: GitHub MCP
+npm install -g @modelcontextprotocol/server-github
+
+# Example: Filesystem MCP
+npm install -g @modelcontextprotocol/server-filesystem
+```
+
+#### 3. Add to config
+
+```json
+{
+  "tools": {
+    "mcpServers": {
+      "playwright": { ... },
+      "github": {
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "enabledTools": ["*"]
+      }
+    }
+  }
+}
+```
+
+#### 4. Restart SpeckBot
 
 ```bash
 speckbot gateway
