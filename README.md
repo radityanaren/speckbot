@@ -32,7 +32,9 @@ A lightweight, personal AI agent with a robust memory system, highly inspired by
 ### Prerequisites
 
 - Python 3.11 or higher
+- Node.js 18+ (for MCP servers like Playwright)
 - An API key for your preferred LLM provider
+- For browser automation: `npx playwright install chromium`
 
 ### Install from Source
 
@@ -284,7 +286,9 @@ if cmd == "/mycommand":
     )
 ```
 
-3. Add to `TELEGRAM_BOT_COMMANDS` in `commands.py` for Telegram command menu:
+3. **Telegram only**: Add to `TELEGRAM_BOT_COMMANDS` in `commands.py` for command menu (optional).
+
+Discord doesn't need this — commands work via @mention (e.g., `@BotName /help`).
 
 ---
 
@@ -543,6 +547,13 @@ class ProvidersConfig(Base):
 ## Skill Setup
 
 Skills are prompt packages that extend the agent's capabilities.
+
+### Skill Locations
+
+| Location | Purpose | How to Add |
+|----------|---------|------------|
+| `speckbot/skills/` | Built-in skills | Edit source code |
+| `~/.speckbot/workspace/skills/` | User skills | Create files directly |
 
 ### Built-in Skills
 
@@ -907,6 +918,19 @@ User Message (Telegram/Discord/CLI)
 6. **Memory as Files**: Simple filesystem storage, survives restarts
 7. **Auto-Discovery**: Channels are auto-detected from `speckbot/channels/`
 
+### Developer Overview
+
+Quick reference for extending SpeckBot:
+
+| What | Where | How |
+|------|-------|-----|
+| Add command | `agent/commands.py` + `agent/loop.py` | Add to COMMANDS dict + handle in `_process_message` |
+| Add tool | `agent/tools/` + `agent/tools/__init__.py` | Create Tool class + register in `__init__` |
+| Add MCP server | `config.json` | Add to `mcpServers` (pre-configured for Playwright) |
+| Add skill | `speckbot/skills/` or `~/.speckbot/workspace/skills/` | Create SKILL.md file |
+| Add channel | `channels/` | Create class extending `BaseChannel`, auto-detected |
+| Add provider | `providers/registry.py` + `config/schema.py` | Add ProviderSpec + config field |
+
 ---
 
 ## Troubleshooting
@@ -933,6 +957,26 @@ User Message (Telegram/Discord/CLI)
 
 1. Check workspace directory exists
 2. Verify write permissions
+
+### Common Mistakes
+
+**Skills not loading:**
+- Skills must be in `~/.speckbot/workspace/skills/` (not `speckbot/skills/`)
+- SKILL.md must have correct frontmatter (`name`, `description`)
+
+**MCP tools not available:**
+- Run `npx playwright install chromium` (or relevant browser)
+- Check `mcpServers` config is valid JSON
+- View DEBUG logs: `LOGURU_LEVEL=DEBUG speckbot gateway`
+
+**Config errors:**
+- JSON syntax errors break config loading (use a JSON validator)
+- Run `speckbot onboard` to regenerate clean config
+
+**Bot not responding:**
+- Discord: Enable **Message Content Intent** in Developer Portal
+- Discord: Use @mention in group chats (unless `groupPolicy: "open"`)
+- Check `allowFrom` includes your user ID
 
 ---
 
