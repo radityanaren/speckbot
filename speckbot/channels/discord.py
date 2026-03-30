@@ -346,7 +346,10 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
 
         reply_to = (payload.get("referenced_message") or {}).get("id")
 
-        # Strip @mention from content
+        # Check if bot was mentioned (do this BEFORE stripping)
+        is_mentioned = self._was_mentioned(content, payload.get("mentions"))
+
+        # Strip @mention from content for processing
         # Formats: <@USER_ID>, <@!USER_ID>, or @botname
         if self._bot_user_id:
             content = content.replace(f"<@{self._bot_user_id}>", "").replace(f"<@!{self._bot_user_id}>", "").strip()
@@ -359,6 +362,12 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
 
         # Content is passed directly to the agent - it handles commands like /help, /memories
         content_parts = [content] if content else []
+
+        # Check group policy - if mention mode, require is_mentioned
+        if self.group_policy == "mention" and not is_mentioned:
+            logger.debug("Discord message in {} ignored (bot not mentioned)", channel_id)
+            await self._stop_typing(channel_id)
+            return
 
         await self._start_typing(channel_id)
 
