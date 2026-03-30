@@ -134,7 +134,20 @@ class MCPServerConfig(Base):
 class TranscriptionConfig(Base):
     """Audio transcription via Groq Whisper (for voice messages)."""
 
-    groq_api_key: str = ""  # Groq API key for transcription (get free key at https://console.groq.com/keys)
+    groq_api_key: str = (
+        ""  # Groq API key for transcription (get free key at https://console.groq.com/keys)
+    )
+
+
+def _default_mcp_servers() -> dict[str, MCPServerConfig]:
+    """Default MCP servers - includes Playwright for browser automation."""
+    return {
+        "playwright": MCPServerConfig(
+            command="npx",
+            args=["@playwright/mcp@latest"],
+            enabled_tools=["*"],
+        )
+    }
 
 
 class ToolsConfig(Base):
@@ -143,11 +156,10 @@ class ToolsConfig(Base):
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
     transcription: TranscriptionConfig = Field(
-        default_factory=TranscriptionConfig,
-        description="Audio Transcription (Groq Whisper)"
+        default_factory=TranscriptionConfig, description="Audio Transcription (Groq Whisper)"
     )
     restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
-    mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
+    mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=_default_mcp_servers)
 
 
 class Config(BaseSettings):
