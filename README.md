@@ -710,15 +710,15 @@ MCP (Model Context Protocol) servers add external tool capabilities to SpeckBot.
 
 ### Built-in MCP Servers
 
-| Server | Description |
-|--------|-------------|
-| **playwright** | Browser automation using Playwright |
+| Server | Description | Status |
+|--------|-------------|--------|
+| **playwright** | Browser automation using Playwright | ✅ Pre-configured |
 
-### Via Wizard
-
-❌ **Not supported** — MCP servers must be configured manually.
+Playwright MCP is **pre-configured by default**. Users just need to install browsers.
 
 ### Via Config
+
+Playwright MCP is already in your config from onboard/wizard. To customize:
 
 ```json
 {
@@ -734,11 +734,9 @@ MCP (Model Context Protocol) servers add external tool capabilities to SpeckBot.
 }
 ```
 
-### Install
+### Install Browsers
 
 ```bash
-# Browser automation
-npm install -g @playwright/mcp
 npx playwright install chromium
 ```
 
