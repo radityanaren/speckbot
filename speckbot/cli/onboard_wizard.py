@@ -1104,6 +1104,7 @@ def run_onboard(initial_config: Config | None = None) -> OnboardResult:
             "[A] Agent Settings": lambda: _configure_general_settings(config, "Agent Settings"),
             "[G] Gateway": lambda: _configure_general_settings(config, "Gateway"),
             "[T] Tools": lambda: _configure_general_settings(config, "Tools"),
+            "[D] Auto-Dream": lambda: _configure_general_settings(config, "Dream"),
             "[V] View Configuration Summary": lambda: _show_summary(config),
         }
 

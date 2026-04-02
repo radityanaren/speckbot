@@ -98,6 +98,16 @@ class DreamEngine:
                         mtime = max(f.stat().st_mtime for f in md_files)
                         memory.last_updated[topic_dir.name] = datetime.fromtimestamp(mtime)
 
+        # Scan projects
+        if self.projects_dir.exists():
+            for topic_dir in self.projects_dir.iterdir():
+                if topic_dir.is_dir():
+                    md_files = list(topic_dir.glob("*.md"))
+                    memory.projects[topic_dir.name] = md_files
+                    if md_files:
+                        mtime = max(f.stat().st_mtime for f in md_files)
+                        memory.last_updated[topic_dir.name] = datetime.fromtimestamp(mtime)
+
         # Scan history
         if self.history_file.exists():
             content = self.history_file.read_text(encoding="utf-8")
@@ -224,8 +234,11 @@ class DreamEngine:
             self.history_file.write_text(
                 "\n\n".join(memory.history_entries) + "\n", encoding="utf-8"
             )
+        elif self.history_file.exists():
+            # Clear empty history
+            self.history_file.write_text("", encoding="utf-8")
 
-        # Write MEMORY.md index
+        # Write MEMORY.md index (always, even if no content)
         self._write_memory_index(memory)
 
     def _write_memory_index(self, memory: MemoryMap) -> None:
