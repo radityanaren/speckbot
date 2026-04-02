@@ -162,6 +162,16 @@ class ToolsConfig(Base):
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=_default_mcp_servers)
 
 
+class DreamConfig(Base):
+    """Auto-Dream memory cleanup configuration."""
+
+    enabled: bool = False
+    run_on_session_end: bool = True
+    max_memory_lines: int = 200
+    deduplicate: bool = True
+    convert_dates: bool = True
+
+
 class Config(BaseSettings):
     """Root configuration for speckbot."""
 
@@ -170,6 +180,7 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    dream: DreamConfig = Field(default_factory=DreamConfig)
 
     @property
     def workspace_path(self) -> Path:

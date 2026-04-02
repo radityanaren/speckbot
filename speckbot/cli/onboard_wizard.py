@@ -622,7 +622,9 @@ def _configure_pydantic_model(
                 setattr(working_model, field_name, None)
             elif new_value is not None:
                 setattr(working_model, field_name, new_value)
-                console.print("[dim]Value saved. Select [Done] to finish editing this section.[/dim]")
+                console.print(
+                    "[dim]Value saved. Select [Done] to finish editing this section.[/dim]"
+                )
             continue
 
         # Generic field input
@@ -630,12 +632,16 @@ def _configure_pydantic_model(
             new_value = _input_bool(field_display, current_value)
             if new_value is not None:
                 setattr(working_model, field_name, new_value)
-                console.print("[dim]Value saved. Select [Done] to finish editing this section.[/dim]")
+                console.print(
+                    "[dim]Value saved. Select [Done] to finish editing this section.[/dim]"
+                )
         else:
             new_value = _input_with_existing(field_display, current_value, ftype.type_name)
             if new_value is not None:
                 setattr(working_model, field_name, new_value)
-                console.print("[dim]Value saved. Select [Done] to finish editing this section.[/dim]")
+                console.print(
+                    "[dim]Value saved. Select [Done] to finish editing this section.[/dim]"
+                )
 
 
 def _try_auto_fill_context_window(model: BaseModel, new_model_name: str) -> None:
@@ -859,18 +865,25 @@ _SETTINGS_SECTIONS: dict[str, tuple[str, str, set[str] | None]] = {
         "Configure web search, shell exec, MCP servers, and audio transcription",
         {"mcp_servers"},
     ),
+    "Dream": (
+        "Auto-Dream",
+        "Configure memory cleanup (deduplicate, date conversion, trim)",
+        None,
+    ),
 }
 
 _SETTINGS_GETTER = {
     "Agent Settings": lambda c: c.agents.defaults,
     "Gateway": lambda c: c.gateway,
     "Tools": lambda c: c.tools,
+    "Dream": lambda c: c.dream,
 }
 
 _SETTINGS_SETTER = {
     "Agent Settings": lambda c, v: setattr(c.agents, "defaults", v),
     "Gateway": lambda c, v: setattr(c, "gateway", v),
     "Tools": lambda c, v: setattr(c, "tools", v),
+    "Dream": lambda c, v: setattr(c, "dream", v),
 }
 
 

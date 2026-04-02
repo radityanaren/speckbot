@@ -679,6 +679,20 @@ def gateway(
             cron.stop()
             agent.stop()
             await channels.stop_all()
+            # Run Auto-Dream on session end
+            if config.dream.enabled and config.dream.run_on_session_end:
+                from speckbot.agent.dream import run_dream
+
+                await run_dream(
+                    config.workspace_path,
+                    {
+                        "enabled": config.dream.enabled,
+                        "run_on_session_end": config.dream.run_on_session_end,
+                        "max_memory_lines": config.dream.max_memory_lines,
+                        "deduplicate": config.dream.deduplicate,
+                        "convert_dates": config.dream.convert_dates,
+                    },
+                )
 
     asyncio.run(run())
 

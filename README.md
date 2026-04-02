@@ -169,6 +169,39 @@ Unlike other bots that lose context when sessions end:
 - ✅ **Searchable**: Bot can read any memory when needed
 - ✅ **Agentic**: Bot decides when to use memories based on context
 
+### Auto-Dream
+
+Auto-Dream is an automatic memory cleanup system that runs when the gateway stops. It keeps your memory files clean and organized over time.
+
+**What it does:**
+- **Deduplicate**: Removes duplicate entries from HISTORY.md
+- **Convert dates**: Changes relative dates ("last week") to absolute ("2026-04-02")
+- **Trim**: Keeps HISTORY.md to a configurable line limit (default: 200 lines)
+- **Index**: Updates MEMORY.md with an overview of all knowledges, projects, and recent history
+
+**Configuration:**
+```json
+{
+  "dream": {
+    "enabled": false,
+    "run_on_session_end": true,
+    "max_memory_lines": 200,
+    "deduplicate": true,
+    "convert_dates": true
+  }
+}
+```
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `enabled` | Enable/disable Auto-Dream | `false` |
+| `run_on_session_end` | Run when gateway stops | `true` |
+| `max_memory_lines` | Max lines in HISTORY.md | `200` |
+| `deduplicate` | Remove duplicate entries | `true` |
+| `convert_dates` | Convert relative to absolute dates | `true` |
+
+Configure via `speckbot onboard --wizard` or edit `~/.speckbot/config.json` directly.
+
 ---
 
 ## Configuration
