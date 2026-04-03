@@ -436,7 +436,7 @@ def _make_provider(config: Config):
     defaults = config.agents.defaults
     provider.generation = GenerationSettings(
         temperature=defaults.temperature,
-        max_tokens=defaults.max_tokens,
+        max_tokens=defaults.max_output_tokens,
         reasoning_effort=defaults.reasoning_effort,
     )
     return provider
@@ -659,22 +659,44 @@ def gateway(
     console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
 
     async def run():
-        # Run Auto-Dream on startup (before gateway starts)
+        # Run Dream (memory cleanup) on startup
         if config.dream.enabled:
             from speckbot.agent.dream import run_dream
 
-            console.print("[dim]Running Auto-Dream memory cleanup...[/dim]")
+            console.print("[dim]Running Dream memory cleanup...[/dim]")
             await run_dream(
                 config.workspace_path,
                 {
                     "enabled": config.dream.enabled,
-                    "run_on_session_end": config.dream.run_on_session_end,
                     "max_memory_lines": config.dream.max_memory_lines,
                     "deduplicate": config.dream.deduplicate,
                     "convert_dates": config.dream.convert_dates,
                 },
             )
-            console.print("[green]✓[/green] Auto-Dream completed")
+            console.print("[green]✓[/green] Dream completed")
+
+        # Sleep timer for auto-restart
+        sleep_timer_task = None
+
+        async def sleep_timer():
+            """Auto-restart after sleep_interval_hours."""
+            if config.dream.sleep_interval_hours <= 0:
+                return  # Disabled
+
+            import time
+
+            sleep_seconds = config.dream.sleep_interval_hours * 3600
+            console.print(
+                f"[dim]Sleep timer: restarting in {config.dream.sleep_interval_hours}h...[/dim]"
+            )
+            await asyncio.sleep(sleep_seconds)
+            console.print("[yellow]Sleep timer: triggering restart...[/yellow]")
+            # Trigger restart
+            os.execv(sys.executable, [sys.executable, "-m", "speckbot", "gateway"])
+
+        # Start sleep timer if enabled
+        if config.dream.enabled and config.dream.sleep_interval_hours > 0:
+            sleep_timer_task = asyncio.create_task(sleep_timer())
 
         try:
             await cron.start()
@@ -691,6 +713,9 @@ def gateway(
             console.print("\n[red]Error: Gateway crashed unexpectedly[/red]")
             console.print(traceback.format_exc())
         finally:
+            # Cancel sleep timer
+            if sleep_timer_task:
+                sleep_timer_task.cancel()
             await agent.close_mcp()
             heartbeat.stop()
             cron.stop()
@@ -770,24 +795,23 @@ def agent(
 
     if message:
         # Single message mode — direct call, no bus needed
-        # Run Auto-Dream on startup if enabled
+        # Run Dream on startup if enabled
         if config.dream.enabled:
             from speckbot.agent.dream import run_dream
 
-            console.print("[dim]Running Auto-Dream memory cleanup...[/dim]")
+            console.print("[dim]Running Dream memory cleanup...[/dim]")
             asyncio.run(
                 run_dream(
                     config.workspace_path,
                     {
                         "enabled": config.dream.enabled,
-                        "run_on_session_end": config.dream.run_on_session_end,
                         "max_memory_lines": config.dream.max_memory_lines,
                         "deduplicate": config.dream.deduplicate,
                         "convert_dates": config.dream.convert_dates,
                     },
                 )
             )
-            console.print("[green]✓[/green] Auto-Dream completed")
+            console.print("[green]✓[/green] Dream completed")
 
         async def run_once():
             nonlocal _thinking
@@ -828,20 +852,19 @@ def agent(
         if config.dream.enabled:
             from speckbot.agent.dream import run_dream
 
-            console.print("[dim]Running Auto-Dream memory cleanup...[/dim]")
+            console.print("[dim]Running Dream memory cleanup...[/dim]")
             asyncio.run(
                 run_dream(
                     config.workspace_path,
                     {
                         "enabled": config.dream.enabled,
-                        "run_on_session_end": config.dream.run_on_session_end,
                         "max_memory_lines": config.dream.max_memory_lines,
                         "deduplicate": config.dream.deduplicate,
                         "convert_dates": config.dream.convert_dates,
                     },
                 )
             )
-            console.print("[green]✓[/green] Auto-Dream completed")
+            console.print("[green]✓[/green] Dream completed")
 
         async def run_interactive():
             bus_task = asyncio.create_task(agent_loop.run())

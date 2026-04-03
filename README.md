@@ -169,36 +169,38 @@ Unlike other bots that lose context when sessions end:
 - ✅ **Searchable**: Bot can read any memory when needed
 - ✅ **Agentic**: Bot decides when to use memories based on context
 
-### Auto-Dream
+### Sleep System
 
-Auto-Dream is an automatic memory cleanup system that runs when the gateway stops. It keeps your memory files clean and organized over time.
+The Sleep system provides memory cleanup and auto-restart functionality. It runs Dream (memory cleanup) on every startup, and can optionally trigger auto-restart after a set interval to refresh the system.
 
 **What it does:**
-- **Deduplicate**: Removes duplicate entries from HISTORY.md
-- **Convert dates**: Changes relative dates ("last week") to absolute ("2026-04-02")
-- **Trim**: Keeps HISTORY.md to a configurable line limit (default: 200 lines)
-- **Index**: Updates MEMORY.md with an overview of all knowledges, projects, and recent history
+- **Dream** (memory cleanup): Runs on startup
+  - Deduplicate: Removes duplicate entries from HISTORY.md
+  - Convert dates: Changes relative dates ("last week") to absolute ("2026-04-02")
+  - Trim: Keeps HISTORY.md to a configurable line limit (default: 200 lines)
+  - Index: Updates MEMORY.md with an overview of all knowledges, projects, and recent history
+- **Sleep** (auto-restart): Triggers automatic restart after X hours to refresh bootstrap files
 
 **Configuration:**
 ```json
 {
   "dream": {
     "enabled": false,
-    "run_on_session_end": true,
     "max_memory_lines": 200,
     "deduplicate": true,
-    "convert_dates": true
+    "convert_dates": true,
+    "sleep_interval_hours": 24
   }
 }
 ```
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `enabled` | Enable/disable Auto-Dream | `false` |
-| `run_on_session_end` | Run when gateway stops | `true` |
+| `enabled` | Enable/disable Sleep system | `false` |
 | `max_memory_lines` | Max lines in HISTORY.md | `200` |
 | `deduplicate` | Remove duplicate entries | `true` |
 | `convert_dates` | Convert relative to absolute dates | `true` |
+| `sleep_interval_hours` | Auto-restart interval in hours (0 = disabled) | `24` |
 
 Configure via `speckbot onboard --wizard` or edit `~/.speckbot/config.json` directly.
 

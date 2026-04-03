@@ -865,9 +865,9 @@ _SETTINGS_SECTIONS: dict[str, tuple[str, str, set[str] | None]] = {
         "Configure web search, shell exec, MCP servers, and audio transcription",
         {"mcp_servers"},
     ),
-    "Dream": (
-        "Auto-Dream",
-        "Configure memory cleanup (deduplicate, date conversion, trim)",
+    "Sleep": (
+        "Sleep System",
+        "Memory cleanup and auto-restart (Dream) configuration",
         None,
     ),
 }
@@ -876,14 +876,14 @@ _SETTINGS_GETTER = {
     "Agent Settings": lambda c: c.agents.defaults,
     "Gateway": lambda c: c.gateway,
     "Tools": lambda c: c.tools,
-    "Dream": lambda c: c.dream,
+    "Sleep": lambda c: c.dream,
 }
 
 _SETTINGS_SETTER = {
     "Agent Settings": lambda c, v: setattr(c.agents, "defaults", v),
     "Gateway": lambda c, v: setattr(c, "gateway", v),
     "Tools": lambda c, v: setattr(c, "tools", v),
-    "Dream": lambda c, v: setattr(c, "dream", v),
+    "Sleep": lambda c, v: setattr(c, "dream", v),
 }
 
 
@@ -991,7 +991,7 @@ def _show_summary(config: Config) -> None:
             ("Agent Settings", config.agents.defaults),
             ("Gateway", config.gateway),
             ("Tools", config.tools),
-            ("Auto-Dream", config.dream),
+            ("Sleep", config.dream),
             ("Channel Common", config.channels),
         ]:
             try:
@@ -1080,7 +1080,7 @@ def run_onboard(initial_config: Config | None = None) -> OnboardResult:
                         "[A] Agent Settings",
                         "[G] Gateway",
                         "[T] Tools",
-                        "[D] Auto-Dream",
+                        "[D] Sleep",
                         "[V] View Configuration Summary",
                         "[S] Save and Exit",
                         "[X] Exit Without Saving",
@@ -1106,7 +1106,7 @@ def run_onboard(initial_config: Config | None = None) -> OnboardResult:
             "[A] Agent Settings": lambda: _configure_general_settings(config, "Agent Settings"),
             "[G] Gateway": lambda: _configure_general_settings(config, "Gateway"),
             "[T] Tools": lambda: _configure_general_settings(config, "Tools"),
-            "[D] Auto-Dream": lambda: _configure_general_settings(config, "Dream"),
+            "[D] Sleep": lambda: _configure_general_settings(config, "Sleep"),
             "[V] View Configuration Summary": lambda: _show_summary(config),
         }
 

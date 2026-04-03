@@ -43,7 +43,7 @@ class AgentDefaults(Base):
     provider: str = (
         "auto"  # Provider name (e.g. "anthropic", "openrouter") or "auto" for auto-detection
     )
-    max_tokens: int = DEFAULT_MAX_TOKENS_AGENT
+    max_output_tokens: int = DEFAULT_MAX_TOKENS_AGENT
     context_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS
     temperature: float = DEFAULT_AGENT_TEMPERATURE
     max_tool_iterations: int = DEFAULT_MAX_TOOL_ITERATIONS
@@ -163,13 +163,15 @@ class ToolsConfig(Base):
 
 
 class DreamConfig(Base):
-    """Auto-Dream memory cleanup configuration."""
+    """Sleep system - memory cleanup and auto-restart configuration."""
 
     enabled: bool = False
-    run_on_session_end: bool = True
+    # Memory cleanup (runs on startup)
     max_memory_lines: int = 200
     deduplicate: bool = True
     convert_dates: bool = True
+    # Sleep/restart settings
+    sleep_interval_hours: int = 24  # Auto-restart every X hours (0 = disabled)
 
 
 class Config(BaseSettings):
