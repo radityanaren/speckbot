@@ -29,12 +29,14 @@ class HookEngine:
     System-level security hooks.
 
     Provides enforcement BEFORE tool execution - no AI involvement.
-    Uses ASK for dangerous tools (user must approve before execution).
+    - DENY: tools that are completely blocked (no user override)
+    - ASK: tools that require user confirmation before execution
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
         self.enabled = self.config.get("enabled", False)
+        self.deny_tools = self.config.get("deny_tools", [])
         self.ask_tools = self.config.get("ask_tools", [])
         self.audit_log = self.config.get("audit_log")
 
@@ -43,7 +45,12 @@ class HookEngine:
         if not self.enabled:
             return HookResult.ALLOW
 
-        # Check if tool requires user confirmation
+        # Check DENY first - completely blocked, no user override
+        if tool_name in self.deny_tools:
+            self._audit_log(tool_name, "DENY", str(params)[:200])
+            return HookResult.DENY
+
+        # Check ASK - requires user confirmation
         if tool_name in self.ask_tools:
             self._audit_log(tool_name, "ASK", str(params)[:200])
             return HookResult.ASK

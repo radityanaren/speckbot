@@ -178,6 +178,9 @@ class HooksConfig(Base):
     """System-level security hooks configuration."""
 
     enabled: bool = False
+    # Tools that are completely blocked by system (no user override)
+    # Use DENY for tools that should NEVER run under any circumstances
+    deny_tools: list[str] = Field(default_factory=list)
     # Tools that require user confirmation before execution (ASK result)
     # Dangerous operations will prompt for user approval
     ask_tools: list[str] = Field(
