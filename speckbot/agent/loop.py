@@ -244,6 +244,14 @@ class AgentLoop:
                     result = await self.tools.execute(
                         tool_call.name, tool_call.arguments, session_key=session_key
                     )
+
+                    # Security: Scan tool output before AI sees it
+                    if self.security and self.security.enabled:
+                        scan_result = self.security.scan_tool_output(result)
+                        if scan_result.is_blocked:
+                            logger.warning("Tool output blocked: {}", scan_result.reason)
+                            result = "[Output filtered by security]"
+
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
@@ -340,18 +348,6 @@ class AgentLoop:
         async with self._processing_lock:
             try:
                 response = await self._process_message(msg)
-
-                # Security: Scan AI output before sending to channel
-                if response is not None and self.security and self.security.enabled:
-                    scan_result = self.security.scan_output(response.content or "")
-                    if scan_result.is_blocked:
-                        # Block dangerous output
-                        response = OutboundMessage(
-                            channel=response.channel,
-                            chat_id=response.chat_id,
-                            content="[Output blocked by security filters]",
-                            metadata=response.metadata,
-                        )
 
                 if response is not None:
                     await self.bus.publish_outbound(response)

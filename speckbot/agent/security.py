@@ -59,6 +59,17 @@ class SecurityService:
             return SecurityResult(HookResult.ALLOW)
         return self._gateway.scan_tool(tool_name, params, session_key)
 
+    def scan_tool_output(self, result: str) -> Any:
+        """Scan tool output before it goes back to the AI.
+
+        Filters dangerous content in tool execution results.
+        """
+        if not self._gateway:
+            from speckbot.security import SecurityResult, HookResult
+
+            return SecurityResult(HookResult.ALLOW)
+        return self._gateway.scan_tool_output(result)
+
     def check_confirmation_response(
         self,
         text: str | None,

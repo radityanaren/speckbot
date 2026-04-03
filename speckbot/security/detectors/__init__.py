@@ -139,6 +139,22 @@ class SecurityGateway:
 
         return SecurityResult(HookResult.ALLOW)
 
+    def scan_tool_output(self, result: str) -> SecurityResult:
+        """Scan tool output before it goes back to the AI.
+
+        Filters dangerous content in tool execution results.
+
+        Args:
+            result: Tool execution result (output from the tool)
+
+        Returns:
+            SecurityResult - BLOCK if dangerous content, ALLOW otherwise
+        """
+        if not self.enabled:
+            return SecurityResult(HookResult.ALLOW)
+
+        return self.block_detector.detect(text=result, context="tool_output")
+
     def check_confirmation_response(
         self,
         text: str | None,
