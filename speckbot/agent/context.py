@@ -141,25 +141,49 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         chat_id: str | None = None,
         current_role: str = "user",
         hooks_config: dict[str, Any] | None = None,
+        session_key: str | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
 
-        # Content security scanning - before building context
+        # Security gateway check - before building context
         if hooks_config and hooks_config.get("enabled"):
-            from speckbot.agent.hooks import ContentSecurity
+            from speckbot.security import SecurityGateway
 
-            content_security = ContentSecurity(hooks_config)
+            # Create gateway with workspace for persistence
+            gateway = SecurityGateway(config=hooks_config, workspace=self.workspace)
 
-            # Scan user message
-            if hooks_config.get("scan_user_input", True):
-                result, issues = content_security.scan_with_details(current_message, "user_input")
-                if result.value == "block":
+            # Check for pending confirmation response first
+            if session_key and current_message:
+                confirm_result = gateway.check_confirmation_response(current_message, session_key)
+                if confirm_result.is_ask:
+                    # Still waiting for confirmation - prompt user
+                    prompt = confirm_result.reason or "Waiting for confirmation..."
                     return [
+                        {"role": "system", "content": self.build_system_prompt(skill_names)},
+                        *history,
                         {
-                            "role": "system",
-                            "content": "Error: Your message was blocked by security filters. It appears to contain suspicious patterns. Please rephrase and try again.",
+                            "role": "user",
+                            "content": f"{prompt}\n\n(Note: Your response will be interpreted as yes/no confirmation.)",
                         },
                     ]
+                elif confirm_result.is_blocked:
+                    # User denied the tool
+                    return [
+                        {"role": "system", "content": "Tool execution denied by user."},
+                    ]
+                # If ALLOW (confirmed), continue to execute the tool (handled by registry)
+                # Clear the confirmed pending state
+                gateway.save_state()
+
+            # Scan user message for blocked content
+            block_result = gateway.scan_input(current_message)
+            if block_result.is_blocked:
+                return [
+                    {
+                        "role": "system",
+                        "content": "Error: Your message was blocked by security filters. It contains restricted patterns. Please rephrase and try again.",
+                    },
+                ]
 
         runtime_ctx = self._build_runtime_context(channel, chat_id)
         user_content = self._build_user_content(current_message, media)

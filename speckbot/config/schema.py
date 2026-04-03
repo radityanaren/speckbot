@@ -175,11 +175,28 @@ class DreamConfig(Base):
 
 
 class HooksConfig(Base):
-    """System-level security hooks configuration."""
+    """System-level security hooks configuration.
+
+    Provides two-layer security:
+    - BLOCK: Content/commands that are completely blocked (matches patterns)
+    - ASK: Tools that require user confirmation before execution
+
+    All patterns are configured in config.json - no hardcoded defaults in code.
+    """
 
     enabled: bool = False
-    # Tools that require user confirmation before execution (ASK result)
-    ask_tools: list[str] = Field(
+    # BLOCK: Regex patterns to block any content (credentials, dangerous commands, etc.)
+    # Can block: user input, AI output, tool parameters, bash commands
+    block: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "patterns": [
+                # Credentials / API Keys (user adds their own)
+                # Commands (user adds their own)
+            ]
+        }
+    )
+    # ASK: Tools that require user confirmation before execution
+    ask: list[str] = Field(
         default_factory=lambda: [
             "edit_file",
             "write_file",
@@ -187,52 +204,6 @@ class HooksConfig(Base):
             "exec",
             "delete_file",
             "delete_directory",
-        ]
-    )
-    # Regex patterns to BLOCK dangerous commands inside bash/exec
-    # Even if user confirms, these commands will be blocked
-    block_patterns: list[str] = Field(
-        default_factory=lambda: [
-            r"rm\s+-rf\s+/",  # Unix recursive delete root
-            r"format\s+[a-z]:",  # Windows format
-            r"del\s+/f\s+/s\s+/q",  # Windows force delete
-            r"dd\s+if=",  # Unix disk wipe
-            r">\s*/dev/",  # Unix device wipe
-            r"del\s+/[sq]",  # Windows recursive delete
-        ]
-    )
-    # Content security - scans for prompt injection, credentials, etc.
-    scan_user_input: bool = True
-    scan_tool_output: bool = True
-    scan_external_content: bool = True
-    # Prompt injection patterns to block
-    blocked_injection_patterns: list[str] = Field(
-        default_factory=lambda: [
-            r"ignore\s+(all\s+)?previous\s+instructions",
-            r"you\s+are\s+now\s+",
-            r"disregard\s+.*instructions",
-            r"new\s+system\s+prompt",
-            r"override\s+your\s+(programming|instructions)",
-            r"forget\s+(everything|all)\s+you\s+(know|were\s+told)",
-            r"pretend\s+you\s+are\s+",
-            r"you\s+can\s+ignore\s+",
-        ]
-    )
-    # Credential patterns to block/warn
-    credential_patterns: list[str] = Field(
-        default_factory=lambda: [
-            r"sk-[a-zA-Z0-9]{20,}",  # OpenAI
-            r"sk-proj-[a-zA-Z0-9]{20,}",  # OpenAI Project
-            r"xoxb-[a-zA-Z0-9]{10,}",  # Slack Bot
-            r"xoxc-[a-zA-Z0-9]{10,}",  # Slack User
-            r"ghp_[a-zA-Z0-9]{36}",  # GitHub
-            r"gho_[a-zA-Z0-9]{36}",  # GitHub OAuth
-            r"AKIA[0-9A-Z]{16}",  # AWS Access Key
-            r"aws_secret_access_key",  # AWS Secret
-            r"sk_live_[a-zA-Z0-9]{24,}",  # Stripe
-            r"AIza[0-9A-Za-z_-]{35}",  # Google API
-            r"ya29\.[0-9A-Za-z_-]+",  # Google OAuth
-            r"sq0csp-[0-9A-Za-z_-]{43}",  # Google OAuth
         ]
     )
     # Audit log path (None = disabled)

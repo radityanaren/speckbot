@@ -84,7 +84,7 @@ class AgentLoop:
 
         self.context = ContextBuilder(workspace)
         self.sessions = session_manager or SessionManager(workspace)
-        self.tools = ToolRegistry(hooks_config)
+        self.tools = ToolRegistry(hooks_config, workspace=workspace)
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,
@@ -195,6 +195,7 @@ class AgentLoop:
         self,
         initial_messages: list[dict],
         on_progress: Callable[..., Awaitable[None]] | None = None,
+        session_key: str | None = None,
     ) -> tuple[str | None, list[str], list[dict]]:
         """Run the agent iteration loop."""
         messages = initial_messages
@@ -235,7 +236,9 @@ class AgentLoop:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
-                    result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    result = await self.tools.execute(
+                        tool_call.name, tool_call.arguments, session_key=session_key
+                    )
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
@@ -405,9 +408,12 @@ class AgentLoop:
                 channel=channel,
                 chat_id=chat_id,
                 current_role=current_role,
-                hooks_config=self.tools._hooks.config if self.tools._hooks else None,
+                hooks_config=self.tools._hooks_config if self.tools._hooks_config else None,
+                session_key=msg.session_key,
             )
-            final_content, _, all_msgs = await self._run_agent_loop(messages)
+            final_content, _, all_msgs = await self._run_agent_loop(
+                messages, session_key=msg.session_key
+            )
             self._save_turn(session, all_msgs, 1 + len(history))
             self.sessions.save(session)
             self._schedule_background(self.memory_consolidator.maybe_consolidate_by_tokens(session))
@@ -496,7 +502,8 @@ class AgentLoop:
             media=msg.media if msg.media else None,
             channel=msg.channel,
             chat_id=msg.chat_id,
-            hooks_config=self.tools._hooks.config if self.tools._hooks else None,
+            hooks_config=self.tools._hooks_config if self.tools._hooks_config else None,
+            session_key=msg.session_key,
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
@@ -512,6 +519,7 @@ class AgentLoop:
         final_content, _, all_msgs = await self._run_agent_loop(
             initial_messages,
             on_progress=on_progress or _bus_progress,
+            session_key=session.key if session else None,
         )
 
         if final_content is None:
