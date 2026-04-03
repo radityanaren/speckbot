@@ -249,9 +249,9 @@ class AgentLoop:
                     if self.security and self.security.enabled:
                         scan_result = self.security.scan_tool_output(result)
                         if scan_result.is_blocked:
+                            pattern_info = scan_result.reason or "unknown pattern"
                             logger.warning(
-                                "⚠️ WARNING: Tool '{}' may have leaked sensitive data. Output filtered.",
-                                tool_call.name,
+                                f"⚠️ WARNING: Tool '{tool_call.name}' output matched blocked pattern: {pattern_info}. Data may have leaked."
                             )
                             result = "[Output filtered by security]"
 
