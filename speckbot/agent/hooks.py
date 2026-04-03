@@ -129,8 +129,8 @@ class ContentSecurity:
         # Check credential patterns
         if self._matches_any_pattern(text, self.credential_patterns):
             self._audit_log("CREDENTIAL", context, text[:200])
-            # Credentials get warning, not block (allow user to handle)
-            result = ContentSecurityResult.WARNING
+            # Block credentials - they belong in config.json, not chat
+            return ContentSecurityResult.BLOCK
 
         return result
 
@@ -162,9 +162,9 @@ class ContentSecurity:
         if "injection:" in str(issues):
             self._audit_log("INJECTION", context, text[:200])
             return ContentSecurityResult.BLOCK, issues
-        elif issues:
+        elif "credential:" in str(issues):
             self._audit_log("CREDENTIAL", context, text[:200])
-            return ContentSecurityResult.WARNING, issues
+            return ContentSecurityResult.BLOCK, issues
 
         return ContentSecurityResult.CLEAN, []
 
