@@ -13,7 +13,6 @@ from loguru import logger
 from speckbot.bus.events import OutboundMessage
 from speckbot.bus.queue import MessageBus
 from speckbot.channels.base import BaseChannel
-from speckbot.shared.mixins import GroupPolicyMixin
 from speckbot.config.paths import get_media_dir
 from speckbot.config.schema import Base
 from speckbot.utils.helpers import split_message
@@ -33,7 +32,7 @@ class DiscordConfig(Base):
     group_policy: Literal["mention", "open"] = "mention"
 
 
-class DiscordChannel(GroupPolicyMixin, BaseChannel):
+class DiscordChannel(BaseChannel):
     """Discord channel using Gateway websocket."""
 
     name = "discord"
@@ -199,9 +198,7 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
                     data: dict[str, Any] = {}
                     if payload_json:
                         data["payload_json"] = json.dumps(payload_json)
-                    response = await self._http.post(
-                        url, headers=headers, files=files, data=data
-                    )
+                    response = await self._http.post(url, headers=headers, files=files, data=data)
                 if response.status_code == 429:
                     resp_data = response.json()
                     retry_after = float(resp_data.get("retry_after", 1.0))
@@ -249,7 +246,9 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
                 user_data = payload.get("user") or {}
                 self._bot_user_id = user_data.get("id")
                 self._bot_username = user_data.get("username")
-                logger.info("Discord bot connected as user {} (@{})", self._bot_user_id, self._bot_username)
+                logger.info(
+                    "Discord bot connected as user {} (@{})", self._bot_user_id, self._bot_username
+                )
             elif op == 0 and event_type == "MESSAGE_CREATE":
                 await self._handle_message_create(payload)
             elif op == 7:
@@ -334,7 +333,9 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
                 continue
             try:
                 media_dir.mkdir(parents=True, exist_ok=True)
-                file_path = media_dir / f"{attachment.get('id', 'file')}_{filename.replace('/', '_')}"
+                file_path = (
+                    media_dir / f"{attachment.get('id', 'file')}_{filename.replace('/', '_')}"
+                )
                 resp = await self._http.get(url)
                 resp.raise_for_status()
                 file_path.write_bytes(resp.content)
@@ -352,11 +353,16 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
         # Strip @mention from content for processing
         # Formats: <@USER_ID>, <@!USER_ID>, or @botname
         if self._bot_user_id:
-            content = content.replace(f"<@{self._bot_user_id}>", "").replace(f"<@!{self._bot_user_id}>", "").strip()
+            content = (
+                content.replace(f"<@{self._bot_user_id}>", "")
+                .replace(f"<@!{self._bot_user_id}>", "")
+                .strip()
+            )
 
         # Strip text mention @botname at start (e.g., "@SpeckBot /help" -> "/help")
         if self._bot_username:
             import re
+
             pattern = rf"^@{re.escape(self._bot_username)}\s*"
             content = re.sub(pattern, "", content, flags=re.IGNORECASE).strip()
 
@@ -410,12 +416,14 @@ class DiscordChannel(GroupPolicyMixin, BaseChannel):
 
     def _should_respond_in_group(self, payload: dict[str, Any], content: str) -> bool:
         """Check if bot should respond in a group channel based on policy.
-        
+
         Uses GroupPolicyMixin.should_respond_in_group() for shared logic.
         """
         mentions = payload.get("mentions") or []
         if not self.should_respond_in_group(content, mentions):
-            logger.debug("Discord message in {} ignored (bot not mentioned)", payload.get("channel_id"))
+            logger.debug(
+                "Discord message in {} ignored (bot not mentioned)", payload.get("channel_id")
+            )
             return False
         return True
 

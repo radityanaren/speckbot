@@ -404,8 +404,7 @@ Adding a new chat interface is automatic via auto-discovery:
 Create `speckbot/channels/mychannel.py`:
 
 ```python
-from speckbot.channels.base import BaseChannel
-from speckbot.shared.mixins import GroupPolicyMixin
+from speckbot.channels.base import BaseChannel, GroupPolicyMixin
 from speckbot.config.schema import Base
 
 class MyChannelConfig(Base):
