@@ -266,7 +266,6 @@ def main(
 def onboard(
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
     config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
-    wizard: bool = typer.Option(False, "--wizard", help="Use interactive wizard"),
 ):
     """Initialize SpeckBot configuration and workspace."""
     from speckbot.config.loader import get_config_path, load_config, save_config, set_config_path
@@ -286,50 +285,26 @@ def onboard(
 
     # Create or update config
     if config_path.exists():
-        if wizard:
-            config = _apply_workspace_override(load_config(config_path))
+        console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
+        console.print("  [bold]y[/bold] = overwrite with defaults (existing values will be lost)")
+        console.print(
+            "  [bold]N[/bold] = refresh config, keeping existing values and adding new fields"
+        )
+        if typer.confirm("Overwrite?"):
+            config = _apply_workspace_override(Config())
+            save_config(config, config_path)
+            console.print(f"[green]✓[/green] Config reset to defaults at {config_path}")
         else:
-            console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
+            config = _apply_workspace_override(load_config(config_path))
+            save_config(config, config_path)
             console.print(
-                "  [bold]y[/bold] = overwrite with defaults (existing values will be lost)"
+                f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)"
             )
-            console.print(
-                "  [bold]N[/bold] = refresh config, keeping existing values and adding new fields"
-            )
-            if typer.confirm("Overwrite?"):
-                config = _apply_workspace_override(Config())
-                save_config(config, config_path)
-                console.print(f"[green]✓[/green] Config reset to defaults at {config_path}")
-            else:
-                config = _apply_workspace_override(load_config(config_path))
-                save_config(config, config_path)
-                console.print(
-                    f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)"
-                )
     else:
         config = _apply_workspace_override(Config())
-        # In wizard mode, don't save yet - the wizard will handle saving if should_save=True
-        if not wizard:
-            save_config(config, config_path)
-            console.print(f"[green]✓[/green] Created config at {config_path}")
+        save_config(config, config_path)
+        console.print(f"[green]✓[/green] Created config at {config_path}")
 
-    # Run interactive wizard if enabled
-    if wizard:
-        from speckbot.cli.onboard_wizard import run_onboard
-
-        try:
-            result = run_onboard(initial_config=config)
-            if not result.should_save:
-                console.print("[yellow]Configuration discarded. No changes were saved.[/yellow]")
-                return
-
-            config = result.config
-            save_config(config, config_path)
-            console.print(f"[green]✓[/green] Config saved at {config_path}")
-        except Exception as e:
-            console.print(f"[red]✗[/red] Error during configuration: {e}")
-            console.print("[yellow]Please run 'speckbot onboard' again to complete setup.[/yellow]")
-            raise typer.Exit(1)
     _onboard_plugins(config_path)
 
     # Create workspace, preferring the configured workspace path.
@@ -348,16 +323,10 @@ def onboard(
 
     console.print(f"\n{__logo__} SpeckBot is ready!")
     console.print("\nNext steps:")
-    if wizard:
-        console.print(f"  1. Chat: [cyan]{agent_cmd}[/cyan]")
-        console.print(f"  2. Start gateway: [cyan]{gateway_cmd}[/cyan]")
-    else:
-        console.print(f"  1. Add your API key to [cyan]{config_path}[/cyan]")
-        console.print("     Get one at: https://openrouter.ai/keys")
-        console.print(f"  2. Chat: [cyan]{agent_cmd}[/cyan]")
-    console.print(
-        "\n[dim]Configure Telegram/Discord channels with: speckbot onboard --wizard[/dim]"
-    )
+    console.print(f"  1. Add your API key to [cyan]{config_path}[/cyan]")
+    console.print("     Get one at: https://openrouter.ai/keys")
+    console.print(f"  2. Chat: [cyan]{agent_cmd}[/cyan]")
+    console.print("\n[dim]Edit config.json to add Telegram/Discord channels[/dim]")
 
 
 def _merge_missing_defaults(existing: Any, defaults: Any) -> Any:
