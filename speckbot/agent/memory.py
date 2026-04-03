@@ -257,6 +257,15 @@ class MemoryStore:
         """Build memory context for the agent."""
         parts = []
 
+        # Hardcoded descriptions - added BEFORE listing
+        parts.append("# Memory System\n")
+        parts.append(
+            "knowledges/ - Folder for factual/technical knowledge. Use save_knowledge tool to save."
+        )
+        parts.append(
+            "projects/ - Folder for project-specific context. Use save_project tool to save.\n"
+        )
+
         # List available knowledges
         knowledges = self.list_knowledges()
         if knowledges:
@@ -267,9 +276,7 @@ class MemoryStore:
                     parts.append(f"- {topic}: {', '.join(files)}")
                 else:
                     parts.append(f"- {topic}")
-            parts.append(
-                "\nUse read_file to load: `{workspace}/knowledges/<topic>/<file>.md`"
-            )
+            parts.append("\nUse read_file to load: `{workspace}/knowledges/<topic>/<file>.md`")
 
         # List available projects
         projects = self.list_projects()
@@ -281,9 +288,7 @@ class MemoryStore:
                     parts.append(f"- {topic}: {', '.join(files)}")
                 else:
                     parts.append(f"- {topic}")
-            parts.append(
-                "\nUse read_file to load: `{workspace}/projects/<topic>/<file>.md`"
-            )
+            parts.append("\nUse read_file to load: `{workspace}/projects/<topic>/<file>.md`")
 
         return "\n".join(parts) if parts else ""
 

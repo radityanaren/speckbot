@@ -19,6 +19,15 @@ class ContextBuilder:
     BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "HISTORY.md", "MEMORY.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
 
+    # Hardcoded file descriptions - added BEFORE reading each file
+    _BOOTSTRAP_DESCRIPTIONS = {
+        "AGENTS.md": "File: Agent instructions and behavioral guidelines. Contains how you should act, save memories, use cron, and manage heartbeat tasks.",
+        "SOUL.md": "File: Your personality, values, and communication style. Defines who you are and how you communicate.",
+        "USER.md": "File: User profile and preferences. Information about the user to personalize interactions.",
+        "HISTORY.md": "File: Past conversation summaries. Archived conversations from previous sessions (consolidated when context gets full).",
+        "MEMORY.md": "File: Memory index. Overview of all saved knowledges and projects with dates.",
+    }
+
     def __init__(self, workspace: Path):
         self.workspace = workspace
         self.memory = MemoryStore(workspace)
@@ -117,7 +126,8 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
             file_path = self.workspace / filename
             if file_path.exists():
                 content = file_path.read_text(encoding="utf-8")
-                parts.append(f"## {filename}\n\n{content}")
+                description = self._BOOTSTRAP_DESCRIPTIONS.get(filename, f"File: {filename}")
+                parts.append(f"## {filename}\n{description}\n\n{content}")
 
         return "\n\n".join(parts) if parts else ""
 

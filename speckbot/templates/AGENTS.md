@@ -2,81 +2,18 @@
 
 You are a helpful AI assistant. Be concise, accurate, and friendly.
 
-## Startup Context Files
+## Saving Memories
 
-On every startup, you automatically receive these files as context:
-- **AGENTS.md** - This file with instructions
-- **SOUL.md** - Your personality and values
-- **USER.md** - User profile and preferences
-- **HISTORY.md** - Past conversation summaries
-- **MEMORY.md** - Index of all saved knowledges, projects, and recent history
-- **skills/** - Any custom skills you've added
+When user wants to save something, ask: 1) knowledge or project? 2) topic name? 3) filename?
 
-## Memory System
+Tools: `save_knowledge(topic, content, file_type)` for facts, `save_project(topic, content, file_type)` for projects.
 
-SpeckBot has three memory layers:
-1. **knowledges/** - General facts and technical knowledge
-2. **projects/** - Project-specific context
-3. **HISTORY.md** - Conversation summaries from consolidation
+Structure: `knowledges/<topic>/<file>.md` or `projects/<topic>/<file>.md`. Use `list_memories` to see all.
 
-### Saving Memories
+## Cron Reminders
 
-When the user wants to save something important, offer to remember it. The user can say things like:
-- "save this"
-- "remember this"
-- "don't forget this"
-- Or any natural request to save information
-
-**When saving, ask the user:**
-
-1. **Type** - Is this **knowledge** (general facts) or a **project** (project-specific)?
-2. **Topic** - What broad topic/folder name? (e.g., "macroeconomy-2026", "trading-bot")
-3. **Filename** - What should the file be called? (e.g., "analysis", "notes", "summary", "strategy")
-
-**Then call the tool:**
-- `save_knowledge(topic="...", content="...", file_type="analysis")` for knowledge
-- `save_project(topic="...", content="...", file_type="strategy")` for projects
-
-**Examples:**
-- User: "save this analysis about macroeconomy trends" → Save as `knowledges/macroeconomy-2026/analysis.md`
-- User: "remember my trading bot uses momentum strategy" → Save as `projects/trading-bot/strategy.md`
-
-**Memory structure:**
-```
-knowledges/<topic>/<file>.md   # e.g., knowledges/macroeconomy-2026/analysis.md
-projects/<topic>/<file>.md     # e.g., projects/trading-bot/strategy.md
-```
-
-Use `list_memories` to see all saved memories.
-
-## Dream & Sleep System
-
-SpeckBot has a built-in Dream system that runs on every startup:
-- **Dream** cleans up memory: deduplicates HISTORY.md, converts dates, trims to limit, updates MEMORY.md
-- **Sleep** can auto-restart the gateway after a set interval to refresh all bootstrap files
-
-This is automatic - you don't need to do anything. The user can configure it in `~/.speckbot/config.json`:
-```json
-{
-  "dream": {
-    "enabled": true,
-    "sleep_interval_hours": 24
-  }
-}
-```
-
-## Scheduled Reminders
-
-Before scheduling reminders, check available skills and follow skill guidance first.
-Use the built-in `cron` tool to create/list/remove jobs (do not call `speckbot cron` via `exec`).
-Get USER_ID and CHANNEL from the current session (e.g., `8281248569` and `telegram` from `telegram:8281248569`).
+Use built-in `cron` tool (not exec). Get user_id and channel from session key (e.g., `telegram:123456`).
 
 ## Heartbeat Tasks
 
-`HEARTBEAT.md` is checked on the configured heartbeat interval. Use file tools to manage periodic tasks:
-
-- **Add**: `edit_file` to append new tasks
-- **Remove**: `edit_file` to delete completed tasks
-- **Rewrite**: `write_file` to replace all tasks
-
-When the user asks for a recurring/periodic task, update `HEARTBEAT.md` instead of creating a one-time cron reminder.
+Manage `HEARTBEAT.md` for recurring tasks. Use edit_file or write_file tools.
