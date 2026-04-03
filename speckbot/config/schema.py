@@ -175,13 +175,11 @@ class DreamConfig(Base):
 
 
 class HooksConfig(Base):
-    """System-level security hooks configuration.
+    """System-level security configuration.
 
     Provides two-layer security:
     - BLOCK: Content/commands that are completely blocked (matches patterns)
     - ASK: Tools that require user confirmation before execution
-
-    All patterns are configured in config.json - no hardcoded defaults in code.
     """
 
     enabled: bool = False
@@ -190,8 +188,16 @@ class HooksConfig(Base):
     block: dict[str, Any] = Field(
         default_factory=lambda: {
             "patterns": [
-                # Credentials / API Keys (user adds their own)
-                # Commands (user adds their own)
+                # Dangerous shell commands
+                r"rm\s+-rf\s+/",
+                r"rm\s+-rf\s+\.",
+                r"format\s+[a-z]:",
+                r"del\s+/f\s+/s\s+/q",
+                r"dd\s+if=",
+                r">\s*/dev/",
+                r"mkfs\.",
+                r"shutdown",
+                r"reboot",
             ]
         }
     )
