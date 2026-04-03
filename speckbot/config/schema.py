@@ -178,9 +178,9 @@ class HooksConfig(Base):
     """System-level security hooks configuration."""
 
     enabled: bool = False
-    # Tools that require user confirmation before execution
-    # Dangerous operations will prompt for confirmation
-    confirm_tools: list[str] = Field(
+    # Tools that require user confirmation before execution (ASK result)
+    # Dangerous operations will prompt for user approval
+    ask_tools: list[str] = Field(
         default_factory=lambda: [
             "edit_file",
             "write_file",

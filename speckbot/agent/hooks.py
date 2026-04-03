@@ -12,8 +12,8 @@ class HookResult(Enum):
     """Result of a hook check."""
 
     ALLOW = "allow"
-    CONFIRM = "confirm"  # requires user approval (was DENY + WARN)
-    DENY = "deny"  # system blocks (reserved for future)
+    ASK = "ask"  # requires user approval before execution
+    DENY = "deny"  # system blocks dangerous operations
     BLOCK = "block"  # for content/input
 
 
@@ -29,13 +29,13 @@ class HookEngine:
     System-level security hooks.
 
     Provides enforcement BEFORE tool execution - no AI involvement.
-    Uses CONFIRM for dangerous tools (user must approve before execution).
+    Uses ASK for dangerous tools (user must approve before execution).
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
         self.enabled = self.config.get("enabled", False)
-        self.confirm_tools = self.config.get("confirm_tools", [])
+        self.ask_tools = self.config.get("ask_tools", [])
         self.audit_log = self.config.get("audit_log")
 
     def check(self, tool_name: str, params: dict[str, Any]) -> HookResult:
@@ -43,10 +43,10 @@ class HookEngine:
         if not self.enabled:
             return HookResult.ALLOW
 
-        # Check if tool requires confirmation
-        if tool_name in self.confirm_tools:
-            self._audit_log(tool_name, "CONFIRM", str(params)[:200])
-            return HookResult.CONFIRM
+        # Check if tool requires user confirmation
+        if tool_name in self.ask_tools:
+            self._audit_log(tool_name, "ASK", str(params)[:200])
+            return HookResult.ASK
 
         self._audit_log(tool_name, "ALLOW", str(params)[:200])
         return HookResult.ALLOW
