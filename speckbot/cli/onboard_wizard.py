@@ -991,6 +991,7 @@ def _show_summary(config: Config) -> None:
             ("Agent Settings", config.agents.defaults),
             ("Gateway", config.gateway),
             ("Tools", config.tools),
+            ("Auto-Dream", config.dream),
             ("Channel Common", config.channels),
         ]:
             try:

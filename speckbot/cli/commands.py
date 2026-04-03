@@ -770,6 +770,25 @@ def agent(
 
     if message:
         # Single message mode — direct call, no bus needed
+        # Run Auto-Dream on startup if enabled
+        if config.dream.enabled:
+            from speckbot.agent.dream import run_dream
+
+            console.print("[dim]Running Auto-Dream memory cleanup...[/dim]")
+            asyncio.run(
+                run_dream(
+                    config.workspace_path,
+                    {
+                        "enabled": config.dream.enabled,
+                        "run_on_session_end": config.dream.run_on_session_end,
+                        "max_memory_lines": config.dream.max_memory_lines,
+                        "deduplicate": config.dream.deduplicate,
+                        "convert_dates": config.dream.convert_dates,
+                    },
+                )
+            )
+            console.print("[green]✓[/green] Auto-Dream completed")
+
         async def run_once():
             nonlocal _thinking
             _thinking = _ThinkingSpinner(enabled=not logs)
@@ -804,13 +823,25 @@ def agent(
 
         signal.signal(signal.SIGINT, _handle_signal)
         signal.signal(signal.SIGTERM, _handle_signal)
-        # SIGHUP is not available on Windows
-        if hasattr(signal, "SIGHUP"):
-            signal.signal(signal.SIGHUP, _handle_signal)
-        # Ignore SIGPIPE to prevent silent process termination when writing to closed pipes
-        # SIGPIPE is not available on Windows
-        if hasattr(signal, "SIGPIPE"):
-            signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+
+        # Run Auto-Dream on startup if enabled
+        if config.dream.enabled:
+            from speckbot.agent.dream import run_dream
+
+            console.print("[dim]Running Auto-Dream memory cleanup...[/dim]")
+            asyncio.run(
+                run_dream(
+                    config.workspace_path,
+                    {
+                        "enabled": config.dream.enabled,
+                        "run_on_session_end": config.dream.run_on_session_end,
+                        "max_memory_lines": config.dream.max_memory_lines,
+                        "deduplicate": config.dream.deduplicate,
+                        "convert_dates": config.dream.convert_dates,
+                    },
+                )
+            )
+            console.print("[green]✓[/green] Auto-Dream completed")
 
         async def run_interactive():
             bus_task = asyncio.create_task(agent_loop.run())
