@@ -174,8 +174,8 @@ class DreamConfig(Base):
     sleep_interval_hours: int = 24  # Auto-restart every X hours (0 = disabled)
 
 
-class HooksConfig(Base):
-    """System-level security configuration.
+class DetectorConfig(Base):
+    """System-level security detector configuration.
 
     Provides two-layer security:
     - BLOCK: Content/commands that are completely blocked (matches patterns)
@@ -225,7 +225,7 @@ class Config(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     dream: DreamConfig = Field(default_factory=DreamConfig)
-    hooks: HooksConfig = Field(default_factory=HooksConfig)
+    detector: DetectorConfig = Field(default_factory=DetectorConfig)
 
     @property
     def workspace_path(self) -> Path:

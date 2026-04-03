@@ -504,7 +504,7 @@ def gateway(
         session_manager=session_manager,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
-        hooks_config=config.hooks.model_dump() if config.hooks else None,
+        hooks_config=config.detector.model_dump() if config.detector else None,
     )
 
     # Set cron callback (needs agent)
@@ -750,7 +750,7 @@ def agent(
         restrict_to_workspace=config.tools.restrict_to_workspace,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
-        hooks_config=config.hooks.model_dump() if config.hooks else None,
+        hooks_config=config.detector.model_dump() if config.detector else None,
     )
 
     # Shared reference for progress callbacks
