@@ -1,10 +1,12 @@
 """Tool registry for dynamic tool management."""
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from speckbot.agent.tools.base import Tool
-from speckbot.security import SecurityGateway, HookResult
+
+if TYPE_CHECKING:
+    from speckbot.agent.security import SecurityService
 
 
 class ToolRegistry:
@@ -14,21 +16,19 @@ class ToolRegistry:
     Allows dynamic registration and execution of tools.
     """
 
-    def __init__(self, hooks_config: dict[str, Any] | None = None, workspace: Path | None = None):
+    def __init__(
+        self,
+        hooks_config: dict[str, Any] | None = None,
+        workspace: Path | None = None,
+        security: "SecurityService" | None = None,
+    ):
         self._tools: dict[str, Tool] = {}
-        self._security = (
-            SecurityGateway(config=hooks_config, workspace=workspace) if hooks_config else None
-        )
+        self._security = security  # Use shared security service
         self._hooks_config = hooks_config
-        self._workspace = workspace
 
     def register(self, tool: Tool) -> None:
         """Register a tool."""
         self._tools[tool.name] = tool
-
-    def unregister(self, name: str) -> None:
-        """Unregister a tool by name."""
-        self._tools.pop(name, None)
 
     def get(self, name: str) -> Tool | None:
         """Get a tool by name."""
@@ -42,12 +42,6 @@ class ToolRegistry:
         """Get all tool definitions in OpenAI format."""
         return [tool.to_schema() for tool in self._tools.values()]
 
-    def set_workspace(self, workspace: Path) -> None:
-        """Set workspace path for security gateway persistence."""
-        self._workspace = workspace
-        if self._security and self._hooks_config:
-            self._security = SecurityGateway(config=self._hooks_config, workspace=workspace)
-
     async def execute(
         self, name: str, params: dict[str, Any], session_key: str | None = None
     ) -> str:
@@ -58,21 +52,19 @@ class ToolRegistry:
         if not tool:
             return f"Error: Tool '{name}' not found. Available: {', '.join(self.tool_names)}"
 
-        # Security gateway check - system-level security before execution
+        # Security check using shared security service
         if self._security and self._security.enabled:
             # First check for pending confirmation that was just confirmed
             if session_key:
                 confirm_result = self._security.check_confirmation_response(None, session_key)
-                if confirm_result.is_allowed and confirm_result.details:
-                    # User just confirmed - execute the tool
-                    pass  # Continue to execution
-                elif confirm_result.is_blocked:
+                if confirm_result.is_blocked:
                     # User denied
                     return f"Error: Tool '{name}' denied by user."
                 elif confirm_result.is_ask:
                     # Still waiting - return the prompt
                     prompt = confirm_result.reason or f"Confirm: {name}? [yes/no]"
                     return f"Error: {prompt}"
+                # If ALLOW (confirmed), continue to execution
 
             # Check if tool needs confirmation or should be blocked
             block_result = self._security.scan_tool(name, params, session_key)
@@ -82,10 +74,7 @@ class ToolRegistry:
                 return f"Error: Tool '{name}' blocked by security. Reason: {reason}"
 
             if block_result.is_ask:
-                prompt = (
-                    block_result.reason
-                    or f"Confirm: {name}({self._security.block_detector._format_params(params)})? [yes/no]"
-                )
+                prompt = block_result.reason or f"Confirm: {name}? [yes/no]"
                 return f"Error: {prompt}"
 
         try:

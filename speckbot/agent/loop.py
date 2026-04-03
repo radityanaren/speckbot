@@ -82,9 +82,15 @@ class AgentLoop:
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 
-        self.context = ContextBuilder(workspace)
+        self.context = ContextBuilder(workspace, security=self.security)
         self.sessions = session_manager or SessionManager(workspace)
-        self.tools = ToolRegistry(hooks_config, workspace=workspace)
+
+        # Create shared security service
+        from speckbot.agent.security import SecurityService
+
+        self.security = SecurityService(hooks_config, workspace)
+
+        self.tools = ToolRegistry(hooks_config, workspace=workspace, security=self.security)
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,
@@ -408,7 +414,6 @@ class AgentLoop:
                 channel=channel,
                 chat_id=chat_id,
                 current_role=current_role,
-                hooks_config=self.tools._hooks_config if self.tools._hooks_config else None,
                 session_key=msg.session_key,
             )
             final_content, _, all_msgs = await self._run_agent_loop(
@@ -502,7 +507,6 @@ class AgentLoop:
             media=msg.media if msg.media else None,
             channel=msg.channel,
             chat_id=msg.chat_id,
-            hooks_config=self.tools._hooks_config if self.tools._hooks_config else None,
             session_key=msg.session_key,
         )
 

@@ -28,10 +28,11 @@ class ContextBuilder:
         "MEMORY.md": "File: Memory index. Overview of all saved knowledges and projects with dates.",
     }
 
-    def __init__(self, workspace: Path):
+    def __init__(self, workspace: Path, security=None):
         self.workspace = workspace
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(workspace)
+        self.security = security  # Shared security service
 
     def build_system_prompt(self, skill_names: list[str] | None = None) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
@@ -145,38 +146,34 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
 
-        # Security gateway check - before building context
-        if hooks_config and hooks_config.get("enabled"):
-            from speckbot.security import SecurityGateway
+        # Use shared security service if available
+        security = self.security
 
-            # Create gateway with workspace for persistence
-            gateway = SecurityGateway(config=hooks_config, workspace=self.workspace)
+        # Check for pending confirmation response first
+        if security and security.enabled and session_key and current_message:
+            confirm_result = security.check_confirmation_response(current_message, session_key)
+            if confirm_result.is_ask:
+                # Still waiting for confirmation - prompt user
+                prompt = confirm_result.reason or "Waiting for confirmation..."
+                return [
+                    {"role": "system", "content": self.build_system_prompt(skill_names)},
+                    *history,
+                    {
+                        "role": "user",
+                        "content": f"{prompt}\n\n(Note: Your response will be interpreted as yes/no confirmation.)",
+                    },
+                ]
+            elif confirm_result.is_blocked:
+                # User denied the tool
+                return [
+                    {"role": "system", "content": "Tool execution denied by user."},
+                ]
+            # If ALLOW (confirmed), continue - save state
+            security.save_state()
 
-            # Check for pending confirmation response first
-            if session_key and current_message:
-                confirm_result = gateway.check_confirmation_response(current_message, session_key)
-                if confirm_result.is_ask:
-                    # Still waiting for confirmation - prompt user
-                    prompt = confirm_result.reason or "Waiting for confirmation..."
-                    return [
-                        {"role": "system", "content": self.build_system_prompt(skill_names)},
-                        *history,
-                        {
-                            "role": "user",
-                            "content": f"{prompt}\n\n(Note: Your response will be interpreted as yes/no confirmation.)",
-                        },
-                    ]
-                elif confirm_result.is_blocked:
-                    # User denied the tool
-                    return [
-                        {"role": "system", "content": "Tool execution denied by user."},
-                    ]
-                # If ALLOW (confirmed), continue to execute the tool (handled by registry)
-                # Clear the confirmed pending state
-                gateway.save_state()
-
-            # Scan user message for blocked content
-            block_result = gateway.scan_input(current_message)
+        # Scan user message for blocked content (if security enabled)
+        if security and security.enabled:
+            block_result = security.scan_input(current_message)
             if block_result.is_blocked:
                 return [
                     {
