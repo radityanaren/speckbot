@@ -249,7 +249,10 @@ class AgentLoop:
                     if self.security and self.security.enabled:
                         scan_result = self.security.scan_tool_output(result)
                         if scan_result.is_blocked:
-                            logger.warning("Tool output blocked: {}", scan_result.reason)
+                            logger.warning(
+                                "⚠️ WARNING: Tool '{}' may have leaked sensitive data. Output filtered.",
+                                tool_call.name,
+                            )
                             result = "[Output filtered by security]"
 
                     messages = self.context.add_tool_result(
