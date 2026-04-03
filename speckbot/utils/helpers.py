@@ -44,6 +44,32 @@ def detect_image_mime(data: bytes) -> str | None:
     return None
 
 
+def detect_video_mime(data: bytes) -> str | None:
+    """Detect video MIME type from magic bytes, ignoring file extension."""
+    # MP4: Check for ftyp box
+    if data[:4] == b"ftyp":
+        # Check for common MP4 variants
+        if (
+            b"isom" in data[4:20]
+            or b"mp41" in data[4:20]
+            or b"mp42" in data[4:20]
+            or b"avc1" in data[4:20]
+            or b"hvc1" in data[4:20]
+        ):
+            return "video/mp4"
+        return "video/mp4"
+    # WebM: MKV container with WebM signature
+    if data[:4] == b"\x1a\x45\xdf\xa3":
+        return "video/webm"
+    # AVI: RIFF header
+    if data[:4] == b"RIFF" and data[8:12] == b"AVI ":
+        return "video/x-msvideo"
+    # QuickTime: moov atom
+    if data[:4] == b"moov":
+        return "video/quicktime"
+    return None
+
+
 def ensure_dir(path: Path) -> Path:
     """Ensure directory exists, return it."""
     path.mkdir(parents=True, exist_ok=True)

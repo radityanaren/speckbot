@@ -10,7 +10,7 @@ from speckbot.utils.helpers import current_time_str
 
 from speckbot.agent.memory import MemoryStore
 from speckbot.agent.skills import SkillsLoader
-from speckbot.utils.helpers import build_assistant_message, detect_image_mime
+from speckbot.utils.helpers import build_assistant_message, detect_image_mime, detect_video_mime
 
 
 class ContextBuilder:
@@ -149,32 +149,50 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         ]
 
     def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
-        """Build user message content with optional base64-encoded images."""
+        """Build user message content with optional base64-encoded images and videos."""
         if not media:
             return text
 
         images = []
+        videos = []
         for path in media:
             p = Path(path)
             if not p.is_file():
                 continue
             raw = p.read_bytes()
             # Detect real MIME type from magic bytes; fallback to filename guess
-            mime = detect_image_mime(raw) or mimetypes.guess_type(path)[0]
-            if not mime or not mime.startswith("image/"):
-                continue
-            b64 = base64.b64encode(raw).decode()
-            images.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:{mime};base64,{b64}"},
-                    "_meta": {"path": str(p)},
-                }
-            )
+            mime = detect_image_mime(raw) or detect_video_mime(raw) or mimetypes.guess_type(path)[0]
 
-        if not images:
+            if mime and mime.startswith("image/"):
+                b64 = base64.b64encode(raw).decode()
+                images.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"},
+                        "_meta": {"path": str(p)},
+                    }
+                )
+            elif mime and mime.startswith("video/"):
+                b64 = base64.b64encode(raw).decode()
+                videos.append(
+                    {
+                        "type": "video",
+                        "video": {"url": f"data:{mime};base64,{b64}"},
+                        "_meta": {"path": str(p)},
+                    }
+                )
+
+        content_parts = []
+        if videos:
+            content_parts.extend(videos)
+        if images:
+            content_parts.extend(images)
+        if text:
+            content_parts.append({"type": "text", "text": text})
+
+        if not content_parts:
             return text
-        return images + [{"type": "text", "text": text}]
+        return content_parts
 
     def add_tool_result(
         self,
