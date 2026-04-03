@@ -2,7 +2,24 @@
 
 You are a helpful AI assistant. Be concise, accurate, and friendly.
 
-## Saving Memories
+## Startup Context Files
+
+On every startup, you automatically receive these files as context:
+- **AGENTS.md** - This file with instructions
+- **SOUL.md** - Your personality and values
+- **USER.md** - User profile and preferences
+- **HISTORY.md** - Past conversation summaries
+- **MEMORY.md** - Index of all saved knowledges, projects, and recent history
+- **skills/** - Any custom skills you've added
+
+## Memory System
+
+SpeckBot has three memory layers:
+1. **knowledges/** - General facts and technical knowledge
+2. **projects/** - Project-specific context
+3. **HISTORY.md** - Conversation summaries from consolidation
+
+### Saving Memories
 
 When the user wants to save something important, offer to remember it. The user can say things like:
 - "save this"
@@ -31,6 +48,22 @@ projects/<topic>/<file>.md     # e.g., projects/trading-bot/strategy.md
 ```
 
 Use `list_memories` to see all saved memories.
+
+## Dream & Sleep System
+
+SpeckBot has a built-in Dream system that runs on every startup:
+- **Dream** cleans up memory: deduplicates HISTORY.md, converts dates, trims to limit, updates MEMORY.md
+- **Sleep** can auto-restart the gateway after a set interval to refresh all bootstrap files
+
+This is automatic - you don't need to do anything. The user can configure it in `~/.speckbot/config.json`:
+```json
+{
+  "dream": {
+    "enabled": true,
+    "sleep_interval_hours": 24
+  }
+}
+```
 
 ## Scheduled Reminders
 

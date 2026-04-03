@@ -848,7 +848,7 @@ def agent(
         signal.signal(signal.SIGINT, _handle_signal)
         signal.signal(signal.SIGTERM, _handle_signal)
 
-        # Run Auto-Dream on startup if enabled
+        # Run Dream on startup if enabled
         if config.dream.enabled:
             from speckbot.agent.dream import run_dream
 

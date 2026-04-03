@@ -1,4 +1,4 @@
-"""Auto-Dream memory cleanup system."""
+"""Dream memory cleanup system - part of SpeckBot's Sleep system."""
 
 import json
 from datetime import datetime, timedelta
@@ -29,15 +29,13 @@ class SessionInsight:
 
 class DreamEngine:
     """
-    Auto-Dream: Background memory cleanup system.
+    Dream: Background memory cleanup system.
 
-    Four phases:
+    Part of SpeckBot's Sleep system. Runs on every startup to:
     1. Scan - Build map of current memory
     2. Explore - Extract patterns from recent sessions
     3. Consolidate - Dedupe, date-convert, trim
     4. Stabilize - Write cleaned files
-
-    Inspired by Claude Code's Auto-Dream feature.
     """
 
     def __init__(self, workspace: Path, config: dict[str, Any] | None = None):
@@ -285,7 +283,7 @@ class DreamEngine:
         if not self.enabled:
             return {"skipped": "disabled"}
 
-        logger.info("Starting Auto-Dream cleanup...")
+        logger.info("Starting Dream cleanup...")
 
         # Phase 1: Scan
         memory = self.scan()
@@ -300,7 +298,7 @@ class DreamEngine:
         self.stabilize(memory)
 
         logger.info(
-            "Auto-Dream complete: deduplicated={}, date_fixed={}, trimmed={}",
+            "Dream complete: deduplicated={}, date_fixed={}, trimmed={}",
             stats.get("deduplicated", 0),
             stats.get("date_fixed", 0),
             stats.get("trimmed", 0),
