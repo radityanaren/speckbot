@@ -178,11 +178,7 @@ class HooksConfig(Base):
     """System-level security hooks configuration."""
 
     enabled: bool = False
-    # Tools that are completely blocked by system (no user override)
-    # Use DENY for tools that should NEVER run under any circumstances
-    deny_tools: list[str] = Field(default_factory=list)
     # Tools that require user confirmation before execution (ASK result)
-    # Dangerous operations will prompt for user approval
     ask_tools: list[str] = Field(
         default_factory=lambda: [
             "edit_file",
@@ -191,6 +187,18 @@ class HooksConfig(Base):
             "exec",
             "delete_file",
             "delete_directory",
+        ]
+    )
+    # Regex patterns to BLOCK dangerous commands inside bash/exec
+    # Even if user confirms, these commands will be blocked
+    block_patterns: list[str] = Field(
+        default_factory=lambda: [
+            r"rm\s+-rf\s+/",  # Unix recursive delete root
+            r"format\s+[a-z]:",  # Windows format
+            r"del\s+/f\s+/s\s+/q",  # Windows force delete
+            r"dd\s+if=",  # Unix disk wipe
+            r">\s*/dev/",  # Unix device wipe
+            r"del\s+/[sq]",  # Windows recursive delete
         ]
     )
     # Content security - scans for prompt injection, credentials, etc.

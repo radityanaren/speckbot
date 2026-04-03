@@ -11,10 +11,9 @@ from loguru import logger
 class HookResult(Enum):
     """Result of a hook check."""
 
-    ALLOW = "allow"
+    ALLOW = "allow"  # runs normally
     ASK = "ask"  # requires user approval before execution
-    DENY = "deny"  # system blocks dangerous operations
-    BLOCK = "block"  # for content/input
+    BLOCK = "block"  # system blocks (tool or content)
 
 
 class ContentSecurityResult(Enum):
@@ -29,15 +28,16 @@ class HookEngine:
     System-level security hooks.
 
     Provides enforcement BEFORE tool execution - no AI involvement.
-    - DENY: tools that are completely blocked (no user override)
-    - ASK: tools that require user confirmation before execution
+    - ALLOW: runs normally
+    - ASK: requires user confirmation before execution
+    - BLOCK: system blocks (dangerous commands, etc.)
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
         self.enabled = self.config.get("enabled", False)
-        self.deny_tools = self.config.get("deny_tools", [])
         self.ask_tools = self.config.get("ask_tools", [])
+        self.block_patterns = self.config.get("block_patterns", [])  # regex for dangerous commands
         self.audit_log = self.config.get("audit_log")
 
     def check(self, tool_name: str, params: dict[str, Any]) -> HookResult:
@@ -45,18 +45,32 @@ class HookEngine:
         if not self.enabled:
             return HookResult.ALLOW
 
-        # Check DENY first - completely blocked, no user override
-        if tool_name in self.deny_tools:
-            self._audit_log(tool_name, "DENY", str(params)[:200])
-            return HookResult.DENY
-
-        # Check ASK - requires user confirmation
+        # Check ASK - requires user confirmation first
         if tool_name in self.ask_tools:
             self._audit_log(tool_name, "ASK", str(params)[:200])
             return HookResult.ASK
 
+        # Check BLOCK patterns for dangerous commands (e.g., rm -rf /)
+        if tool_name in ("bash", "exec"):
+            command = params.get("command", "") or params.get("command_str", "")
+            if self._matches_any_pattern(command, self.block_patterns):
+                self._audit_log(tool_name, "BLOCK", command[:200])
+                return HookResult.BLOCK
+
         self._audit_log(tool_name, "ALLOW", str(params)[:200])
         return HookResult.ALLOW
+
+    def _matches_any_pattern(self, text: str, patterns: list[str]) -> bool:
+        """Check if text matches any pattern (case-insensitive)."""
+        if not text or not patterns:
+            return False
+        for pattern in patterns:
+            try:
+                if re.search(pattern, text, re.IGNORECASE):
+                    return True
+            except re.error:
+                logger.warning("Invalid regex pattern: {}", pattern)
+        return False
 
     def _audit_log(self, tool: str, action: str, details: str) -> None:
         """Log action to audit file if configured."""

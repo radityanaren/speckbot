@@ -48,8 +48,8 @@ class ToolRegistry:
         # Hooks check - system-level security before execution
         if self._hooks and self._hooks.enabled:
             hook_result = self._hooks.check(name, params)
-            if hook_result == HookResult.DENY:
-                return f"Error: Tool '{name}' execution denied by security hooks."
+            if hook_result == HookResult.BLOCK:
+                return f"Error: Tool '{name}' blocked by security hooks."
             elif hook_result == HookResult.ASK:
                 return f"Error: Tool '{name}' requires user confirmation before execution. Please confirm and retry."
 
