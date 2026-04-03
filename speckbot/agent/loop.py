@@ -82,14 +82,13 @@ class AgentLoop:
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 
-        self.context = ContextBuilder(workspace, security=self.security)
-        self.sessions = session_manager or SessionManager(workspace)
-
-        # Create shared security service
+        # Create shared security service first
         from speckbot.agent.security import SecurityService
 
         self.security = SecurityService(hooks_config, workspace)
 
+        self.context = ContextBuilder(workspace, security=self.security)
+        self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry(hooks_config, workspace=workspace, security=self.security)
         self.subagents = SubagentManager(
             provider=provider,
