@@ -140,8 +140,30 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         channel: str | None = None,
         chat_id: str | None = None,
         current_role: str = "user",
+        hooks_config: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
+
+        # Content security scanning - before building context
+        if hooks_config and hooks_config.get("enabled"):
+            from speckbot.agent.hooks import ContentSecurity
+
+            content_security = ContentSecurity(hooks_config)
+
+            # Scan user message
+            if hooks_config.get("scan_user_input", True):
+                result, issues = content_security.scan_with_details(current_message, "user_input")
+                if result.value == "block":
+                    return [
+                        {
+                            "role": "system",
+                            "content": "Error: Your message was blocked by security filters. It appears to contain suspicious patterns. Please rephrase and try again.",
+                        },
+                    ]
+                elif result.value == "warning":
+                    # Prepend warning but allow
+                    current_message = f"[Security Notice: Your message contains potentially sensitive patterns. Continue with caution.]\n\n{current_message}"
+
         runtime_ctx = self._build_runtime_context(channel, chat_id)
         user_content = self._build_user_content(current_message, media)
 

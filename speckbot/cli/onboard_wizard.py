@@ -870,6 +870,11 @@ _SETTINGS_SECTIONS: dict[str, tuple[str, str, set[str] | None]] = {
         "Memory cleanup and auto-restart (Dream) configuration",
         None,
     ),
+    "Security": (
+        "Security Hooks",
+        "System-level security: pattern blocking, content scanning for prompt injection and credentials",
+        None,
+    ),
 }
 
 _SETTINGS_GETTER = {
@@ -877,6 +882,7 @@ _SETTINGS_GETTER = {
     "Gateway": lambda c: c.gateway,
     "Tools": lambda c: c.tools,
     "Sleep": lambda c: c.dream,
+    "Security": lambda c: c.hooks,
 }
 
 _SETTINGS_SETTER = {
@@ -884,6 +890,7 @@ _SETTINGS_SETTER = {
     "Gateway": lambda c, v: setattr(c, "gateway", v),
     "Tools": lambda c, v: setattr(c, "tools", v),
     "Sleep": lambda c, v: setattr(c, "dream", v),
+    "Security": lambda c, v: setattr(c, "hooks", v),
 }
 
 
@@ -1081,9 +1088,10 @@ def run_onboard(initial_config: Config | None = None) -> OnboardResult:
                         "[G] Gateway",
                         "[T] Tools",
                         "[D] Sleep",
+                        "[S] Security",
                         "[V] View Configuration Summary",
-                        "[S] Save and Exit",
-                        "[X] Exit Without Saving",
+                        "[X] Save and Exit",
+                        "[Q] Exit Without Saving",
                     ],
                     qmark=">",
                 )
@@ -1107,6 +1115,7 @@ def run_onboard(initial_config: Config | None = None) -> OnboardResult:
             "[G] Gateway": lambda: _configure_general_settings(config, "Gateway"),
             "[T] Tools": lambda: _configure_general_settings(config, "Tools"),
             "[D] Sleep": lambda: _configure_general_settings(config, "Sleep"),
+            "[S] Security": lambda: _configure_general_settings(config, "Security"),
             "[V] View Configuration Summary": lambda: _show_summary(config),
         }
 

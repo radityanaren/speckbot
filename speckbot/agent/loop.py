@@ -65,6 +65,7 @@ class AgentLoop:
         session_manager: SessionManager | None = None,
         mcp_servers: dict | None = None,
         channels_config: ChannelsConfig | None = None,
+        hooks_config: dict | None = None,
     ):
         from speckbot.config.schema import ExecToolConfig, WebSearchConfig
 
@@ -83,7 +84,7 @@ class AgentLoop:
 
         self.context = ContextBuilder(workspace)
         self.sessions = session_manager or SessionManager(workspace)
-        self.tools = ToolRegistry()
+        self.tools = ToolRegistry(hooks_config)
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,
@@ -404,6 +405,7 @@ class AgentLoop:
                 channel=channel,
                 chat_id=chat_id,
                 current_role=current_role,
+                hooks_config=self.tools._hooks.config if self.tools._hooks else None,
             )
             final_content, _, all_msgs = await self._run_agent_loop(messages)
             self._save_turn(session, all_msgs, 1 + len(history))
@@ -494,6 +496,7 @@ class AgentLoop:
             media=msg.media if msg.media else None,
             channel=msg.channel,
             chat_id=msg.chat_id,
+            hooks_config=self.tools._hooks.config if self.tools._hooks else None,
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:

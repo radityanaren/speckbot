@@ -174,6 +174,71 @@ class DreamConfig(Base):
     sleep_interval_hours: int = 24  # Auto-restart every X hours (0 = disabled)
 
 
+class HooksConfig(Base):
+    """System-level security hooks configuration."""
+
+    enabled: bool = False
+    # Shell/command patterns - blocks before execution
+    blocked_patterns: list[str] = Field(
+        default_factory=lambda: [
+            r"rm\s+-rf\s+/",  # Unix recursive delete root
+            r"format\s+[a-z]:",  # Windows format
+            r"del\s+/f\s+/s\s+/q",  # Windows force delete
+            r"dd\s+if=",  # Unix disk wipe
+            r">\s*/dev/",  # Unix device wipe
+            r"rm\s+-rf\s+",  # Unix recursive delete
+            r"del\s+/[sq]",  # Windows recursive delete
+        ]
+    )
+    # Warning patterns - allow but warn
+    warn_patterns: list[str] = Field(
+        default_factory=lambda: [
+            r"git\s+push\s+--force",
+            r"shutdown",
+            r"reboot",
+            r"systemctl\s+stop",
+        ]
+    )
+    # Tools that require user confirmation before execution
+    confirm_tools: list[str] = Field(default_factory=lambda: ["edit_file", "write_file", "bash"])
+    # Content security - scans for prompt injection, credentials, etc.
+    scan_user_input: bool = True
+    scan_tool_output: bool = True
+    scan_external_content: bool = True
+    # Prompt injection patterns to block
+    blocked_injection_patterns: list[str] = Field(
+        default_factory=lambda: [
+            r"ignore\s+(all\s+)?previous\s+instructions",
+            r"you\s+are\s+now\s+",
+            r"disregard\s+.*instructions",
+            r"new\s+system\s+prompt",
+            r"override\s+your\s+(programming|instructions)",
+            r"forget\s+(everything|all)\s+you\s+(know|were\s+told)",
+            r"pretend\s+you\s+are\s+",
+            r"you\s+can\s+ignore\s+",
+        ]
+    )
+    # Credential patterns to block/warn
+    credential_patterns: list[str] = Field(
+        default_factory=lambda: [
+            r"sk-[a-zA-Z0-9]{20,}",  # OpenAI
+            r"sk-proj-[a-zA-Z0-9]{20,}",  # OpenAI Project
+            r"xoxb-[a-zA-Z0-9]{10,}",  # Slack Bot
+            r"xoxc-[a-zA-Z0-9]{10,}",  # Slack User
+            r"ghp_[a-zA-Z0-9]{36}",  # GitHub
+            r"gho_[a-zA-Z0-9]{36}",  # GitHub OAuth
+            r"AKIA[0-9A-Z]{16}",  # AWS Access Key
+            r"aws_secret_access_key",  # AWS Secret
+            r"sk_live_[a-zA-Z0-9]{24,}",  # Stripe
+            r"AIza[0-9A-Za-z_-]{35}",  # Google API
+            r"ya29\.[0-9A-Za-z_-]+",  # Google OAuth
+            r"sq0csp-[0-9A-Za-z_-]{43}",  # Google OAuth
+        ]
+    )
+    # Audit log path (None = disabled)
+    audit_log: str | None = None
+
+
 class Config(BaseSettings):
     """Root configuration for speckbot."""
 
@@ -183,6 +248,7 @@ class Config(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     dream: DreamConfig = Field(default_factory=DreamConfig)
+    hooks: HooksConfig = Field(default_factory=HooksConfig)
 
     @property
     def workspace_path(self) -> Path:

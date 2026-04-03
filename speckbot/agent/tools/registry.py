@@ -3,6 +3,7 @@
 from typing import Any
 
 from speckbot.agent.tools.base import Tool
+from speckbot.agent.hooks import HookEngine, HookResult
 
 
 class ToolRegistry:
@@ -12,8 +13,9 @@ class ToolRegistry:
     Allows dynamic registration and execution of tools.
     """
 
-    def __init__(self):
+    def __init__(self, hooks_config: dict[str, Any] | None = None):
         self._tools: dict[str, Tool] = {}
+        self._hooks = HookEngine(hooks_config) if hooks_config else None
 
     def register(self, tool: Tool) -> None:
         """Register a tool."""
@@ -43,10 +45,36 @@ class ToolRegistry:
         if not tool:
             return f"Error: Tool '{name}' not found. Available: {', '.join(self.tool_names)}"
 
+        # Hooks check - system-level security before execution
+        if self._hooks and self._hooks.enabled:
+            hook_result = self._hooks.check(name, params)
+            if hook_result == HookResult.DENY:
+                return f"Error: Tool '{name}' execution blocked by security hooks. Reason: blocked pattern matched."
+            elif hook_result == HookResult.WARN:
+                # Allow but prepend warning - this gets added to result below
+                warn_msg = "[Security Warning: This command matches a potentially risky pattern. Continue with caution.] "
+                try:
+                    params = tool.cast_params(params)
+                    errors = tool.validate_params(params)
+                    if errors:
+                        return (
+                            f"Error: Invalid parameters for tool '{name}': "
+                            + "; ".join(errors)
+                            + _HINT
+                        )
+                    result = await tool.execute(**params)
+                    if isinstance(result, str) and result.startswith("Error"):
+                        return warn_msg + result + _HINT
+                    return warn_msg + result
+                except Exception as e:
+                    return f"Error executing {name}: {str(e)}" + _HINT
+            elif hook_result == HookResult.CONFIRM:
+                return f"Error: Tool '{name}' requires confirmation before execution. Please confirm and retry."
+
         try:
             # Attempt to cast parameters to match schema types
             params = tool.cast_params(params)
-            
+
             # Validate parameters
             errors = tool.validate_params(params)
             if errors:
