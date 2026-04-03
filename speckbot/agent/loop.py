@@ -340,6 +340,19 @@ class AgentLoop:
         async with self._processing_lock:
             try:
                 response = await self._process_message(msg)
+
+                # Security: Scan AI output before sending to channel
+                if response is not None and self.security and self.security.enabled:
+                    scan_result = self.security.scan_output(response.content or "")
+                    if scan_result.is_blocked:
+                        # Block dangerous output
+                        response = OutboundMessage(
+                            channel=response.channel,
+                            chat_id=response.chat_id,
+                            content="[Output blocked by security filters]",
+                            metadata=response.metadata,
+                        )
+
                 if response is not None:
                     await self.bus.publish_outbound(response)
                 elif msg.channel == "cli":
