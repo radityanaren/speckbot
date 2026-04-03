@@ -230,6 +230,7 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
     (workspace / "projects").mkdir(exist_ok=True)
     _write(None, workspace / "HISTORY.md")
     (workspace / "skills").mkdir(exist_ok=True)
+    (workspace / "sessions").mkdir(exist_ok=True)
 
     if added and not silent:
         from rich.console import Console

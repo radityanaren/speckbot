@@ -1079,6 +1079,7 @@ def run_onboard(initial_config: Config | None = None) -> OnboardResult:
                         "[A] Agent Settings",
                         "[G] Gateway",
                         "[T] Tools",
+                        "[D] Auto-Dream",
                         "[V] View Configuration Summary",
                         "[S] Save and Exit",
                         "[X] Exit Without Saving",
