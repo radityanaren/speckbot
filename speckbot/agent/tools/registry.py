@@ -1,7 +1,7 @@
 """Tool registry for dynamic tool management."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from speckbot.agent.tools.base import Tool
 
@@ -20,7 +20,7 @@ class ToolRegistry:
         self,
         hooks_config: dict[str, Any] | None = None,
         workspace: Path | None = None,
-        security: "SecurityService" | None = None,
+        security: Optional["SecurityService"] = None,
     ):
         self._tools: dict[str, Tool] = {}
         self._security = security  # Use shared security service
