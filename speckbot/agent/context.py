@@ -160,9 +160,6 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
                             "content": "Error: Your message was blocked by security filters. It appears to contain suspicious patterns. Please rephrase and try again.",
                         },
                     ]
-                elif result.value == "warning":
-                    # Prepend warning but allow
-                    current_message = f"[Security Notice: Your message contains potentially sensitive patterns. Continue with caution.]\n\n{current_message}"
 
         runtime_ctx = self._build_runtime_context(channel, chat_id)
         user_content = self._build_user_content(current_message, media)

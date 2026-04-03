@@ -21,7 +21,6 @@ class ContentSecurityResult(Enum):
     """Result of content security scan."""
 
     CLEAN = "clean"
-    WARNING = "warning"
     BLOCK = "block"
 
 
