@@ -12,9 +12,9 @@ class HookResult(Enum):
     """Result of a hook check."""
 
     ALLOW = "allow"
-    DENY = "deny"
-    WARN = "warn"
-    CONFIRM = "confirm"
+    CONFIRM = "confirm"  # requires user approval (was DENY + WARN)
+    DENY = "deny"  # system blocks (reserved for future)
+    BLOCK = "block"  # for content/input
 
 
 class ContentSecurityResult(Enum):
@@ -29,14 +29,12 @@ class HookEngine:
     System-level security hooks.
 
     Provides enforcement BEFORE tool execution - no AI involvement.
-    OS-agnostic pattern matching using regex.
+    Uses CONFIRM for dangerous tools (user must approve before execution).
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
         self.enabled = self.config.get("enabled", False)
-        self.blocked_patterns = self.config.get("blocked_patterns", [])
-        self.warn_patterns = self.config.get("warn_patterns", [])
         self.confirm_tools = self.config.get("confirm_tools", [])
         self.audit_log = self.config.get("audit_log")
 
@@ -47,38 +45,11 @@ class HookEngine:
 
         # Check if tool requires confirmation
         if tool_name in self.confirm_tools:
+            self._audit_log(tool_name, "CONFIRM", str(params)[:200])
             return HookResult.CONFIRM
-
-        # For bash/exec tools, check command patterns
-        if tool_name in ("bash", "exec"):
-            command = params.get("command", "")
-            if not command:
-                command = params.get("command_str", "")
-
-            # Check blocked patterns
-            if self._matches_any_pattern(command, self.blocked_patterns):
-                self._audit_log(tool_name, "BLOCKED", command)
-                return HookResult.DENY
-
-            # Check warn patterns
-            if self._matches_any_pattern(command, self.warn_patterns):
-                self._audit_log(tool_name, "WARN", command)
-                return HookResult.WARN
 
         self._audit_log(tool_name, "ALLOW", str(params)[:200])
         return HookResult.ALLOW
-
-    def _matches_any_pattern(self, text: str, patterns: list[str]) -> bool:
-        """Check if text matches any pattern (case-insensitive)."""
-        if not text or not patterns:
-            return False
-        for pattern in patterns:
-            try:
-                if re.search(pattern, text, re.IGNORECASE):
-                    return True
-            except re.error:
-                logger.warning("Invalid regex pattern: {}", pattern)
-        return False
 
     def _audit_log(self, tool: str, action: str, details: str) -> None:
         """Log action to audit file if configured."""

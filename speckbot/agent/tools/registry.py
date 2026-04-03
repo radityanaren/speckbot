@@ -49,25 +49,7 @@ class ToolRegistry:
         if self._hooks and self._hooks.enabled:
             hook_result = self._hooks.check(name, params)
             if hook_result == HookResult.DENY:
-                return f"Error: Tool '{name}' execution blocked by security hooks. Reason: blocked pattern matched."
-            elif hook_result == HookResult.WARN:
-                # Allow but prepend warning - this gets added to result below
-                warn_msg = "[Security Warning: This command matches a potentially risky pattern. Continue with caution.] "
-                try:
-                    params = tool.cast_params(params)
-                    errors = tool.validate_params(params)
-                    if errors:
-                        return (
-                            f"Error: Invalid parameters for tool '{name}': "
-                            + "; ".join(errors)
-                            + _HINT
-                        )
-                    result = await tool.execute(**params)
-                    if isinstance(result, str) and result.startswith("Error"):
-                        return warn_msg + result + _HINT
-                    return warn_msg + result
-                except Exception as e:
-                    return f"Error executing {name}: {str(e)}" + _HINT
+                return f"Error: Tool '{name}' execution denied by security hooks."
             elif hook_result == HookResult.CONFIRM:
                 return f"Error: Tool '{name}' requires confirmation before execution. Please confirm and retry."
 

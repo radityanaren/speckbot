@@ -178,29 +178,18 @@ class HooksConfig(Base):
     """System-level security hooks configuration."""
 
     enabled: bool = False
-    # Shell/command patterns - blocks before execution
-    blocked_patterns: list[str] = Field(
-        default_factory=lambda: [
-            r"rm\s+-rf\s+/",  # Unix recursive delete root
-            r"format\s+[a-z]:",  # Windows format
-            r"del\s+/f\s+/s\s+/q",  # Windows force delete
-            r"dd\s+if=",  # Unix disk wipe
-            r">\s*/dev/",  # Unix device wipe
-            r"rm\s+-rf\s+",  # Unix recursive delete
-            r"del\s+/[sq]",  # Windows recursive delete
-        ]
-    )
-    # Warning patterns - allow but warn
-    warn_patterns: list[str] = Field(
-        default_factory=lambda: [
-            r"git\s+push\s+--force",
-            r"shutdown",
-            r"reboot",
-            r"systemctl\s+stop",
-        ]
-    )
     # Tools that require user confirmation before execution
-    confirm_tools: list[str] = Field(default_factory=lambda: ["edit_file", "write_file", "bash"])
+    # Dangerous operations will prompt for confirmation
+    confirm_tools: list[str] = Field(
+        default_factory=lambda: [
+            "edit_file",
+            "write_file",
+            "bash",
+            "exec",
+            "delete_file",
+            "delete_directory",
+        ]
+    )
     # Content security - scans for prompt injection, credentials, etc.
     scan_user_input: bool = True
     scan_tool_output: bool = True
