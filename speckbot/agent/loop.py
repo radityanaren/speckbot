@@ -761,6 +761,7 @@ Be concise but insightful."""
             )
 
             content = (response.content or "").strip()
+            logger.info("Monologue LLM response: {}", content[:100] if content else "(empty)")
 
             if content.upper().startswith("JOURNAL:"):
                 journal_entry = content[7:].strip()
@@ -778,6 +779,28 @@ Be concise but insightful."""
                         )
                     )
                     logger.info("Monologue journaled: {}", journal_entry[:50])
+            elif content.upper().startswith("SKIP"):
+                # LLM decided nothing noteworthy - still send a marker to prove system works
+                await self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=channel,
+                        chat_id=chat_id,
+                        content="💭\n```\n(thinking...)\n```",
+                        progress_type="thought",
+                    )
+                )
+                logger.info("Monologue skipped (no noteworthy reflection)")
+            else:
+                # Unexpected response format - send as-is to show system is working
+                await self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=channel,
+                        chat_id=chat_id,
+                        content=f"💭\n```\n{content[:200]}\n```",
+                        progress_type="thought",
+                    )
+                )
+                logger.info("Monologue sent (non-standard format): {}", content[:50])
 
         except Exception as e:
             logger.error("Monologue failed: {}", e)
