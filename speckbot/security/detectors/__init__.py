@@ -7,7 +7,7 @@ from loguru import logger
 
 from speckbot.security.detectors.base import DetectorBase, SecurityResult, HookResult
 from speckbot.security.detectors.block import BlockDetector
-from speckbot.security.detectors.ask import AskDetector
+from speckbot.security.detectors.ask import AskDetector, PendingConfirmation
 
 
 class SecurityGateway:
@@ -111,7 +111,7 @@ class SecurityGateway:
         if ask_result.is_ask:
             # Store pending confirmation
             if session_key:
-                self.ask_detector._pending[session_key] = self.ask_detector.PendingConfirmation(
+                self.ask_detector._pending[session_key] = PendingConfirmation(
                     tool_name=tool_name,
                     params=params,
                     context="tool_execution",
