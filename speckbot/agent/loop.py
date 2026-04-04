@@ -713,14 +713,13 @@ class AgentLoop:
 
         self._last_monologue_time = time.time()
 
-        # Build context from recent session messages
+        # Build context from recent session messages (more context for better monologue)
         recent_msgs = session.messages[-20:]
         context_lines = []
         for m in recent_msgs:
             role = m.get("role", "")
             content = m.get("content", "")
-            if isinstance(content, str) and len(content) > 300:
-                content = content[:300] + "..."
+            # Don't truncate - give LLM full context for better reflections
             if content and role in ("user", "assistant"):
                 context_lines.append(f"[{role}]: {content}")
 
@@ -791,16 +790,18 @@ Be concise but insightful."""
                 )
                 logger.info("Monologue skipped (no noteworthy reflection)")
             else:
-                # Unexpected response format - send as-is to show system is working
-                await self.bus.publish_outbound(
-                    OutboundMessage(
-                        channel=channel,
-                        chat_id=chat_id,
-                        content=f"💭\n```\n{content[:200]}\n```",
-                        progress_type="thought",
+                # Unexpected response format - journal it and send to user (full content)
+                if content:
+                    await self._write_journal(content)
+                    await self.bus.publish_outbound(
+                        OutboundMessage(
+                            channel=channel,
+                            chat_id=chat_id,
+                            content=f"💭\n```\n{content}\n```",
+                            progress_type="thought",
+                        )
                     )
-                )
-                logger.info("Monologue sent (non-standard format): {}", content[:50])
+                    logger.info("Monologue journaled (non-standard): {}", content[:50])
 
         except Exception as e:
             logger.error("Monologue failed: {}", e)
