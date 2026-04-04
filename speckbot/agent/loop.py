@@ -817,14 +817,14 @@ Be concise but insightful."""
         # Trim to keep last N entries
         lines = updated.split("\n")
         entry_count = sum(1 for line in lines if line.strip().startswith("- ["))
-        if entry_count > self._reflections_max_entries:
+        if entry_count > self._monologue_max_entries:
             # Keep only last N entries
             keep_lines = []
             found_entries = 0
             for line in reversed(lines):
                 if line.strip().startswith("- ["):
                     found_entries += 1
-                    if found_entries > self._reflections_max_entries:
+                    if found_entries > self._monologue_max_entries:
                         continue
                 keep_lines.insert(0, line)
             updated = "\n".join(keep_lines)
