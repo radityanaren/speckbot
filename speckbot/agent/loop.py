@@ -677,12 +677,7 @@ class AgentLoop:
             pass
 
     async def _trigger_monologue_if_idle(self) -> None:
-        """Trigger monologue for the most recent session.
-
-        Called when idle timer fires - we already know we've been idle for idle_seconds,
-        so no need to check session timestamps.
-        """
-        # Only check the session that's currently active (most recent)
+        """Trigger monologue for the most recent session by injecting a timed prompt."""
         if not self.sessions._cache:
             logger.info("Monologue: no sessions in cache")
             return
@@ -705,7 +700,7 @@ class AgentLoop:
             return
 
         logger.info(
-            "Monologue using session {} (updated at: {}, {} messages)",
+            "Monologue: injecting into session {} (updated at: {}, {} messages)",
             recent_key,
             latest_update,
             len(recent_session.messages),
@@ -717,70 +712,51 @@ class AgentLoop:
         else:
             channel, chat_id = "cli", recent_key or "default"
 
-        logger.info("Triggering monologue for session {}", recent_key)
-        await self._trigger_monologue(recent_session, channel, chat_id)
+        # Get monologue prompt (custom or default)
+        if self._monologue_prompt:
+            prompt = self._monologue_prompt
+        else:
+            prompt = "Take a moment to reflect on what we've been discussing. What patterns do you notice? What stands out to you?"
 
-    async def _trigger_monologue(self, session: Session, channel: str, chat_id: str) -> None:
-        """Trigger monologue: user asks for reflection on session, LLM responds, write to journal and chat."""
+        # Inject as a system message to preserve full agent context
+        await self._trigger_monologue(channel, chat_id, prompt)
+
+    async def _trigger_monologue(self, channel: str, chat_id: str, prompt: str) -> None:
+        """Inject monologue prompt into session and process through normal agent loop."""
+        from speckbot.bus.events import InboundMessage
         import time
-        from speckbot.utils.helpers import current_time_str
 
         self._last_monologue_time = time.time()
 
-        # Build context from recent session messages
-        recent_msgs = session.messages[-20:]
-        context_lines = []
-        for m in recent_msgs:
-            role = m.get("role", "")
-            content = m.get("content", "")
-            if content and role in ("user", "assistant"):
-                context_lines.append(f"[{role}]: {content}")
+        # Create system message that gets processed through normal agent loop
+        msg = InboundMessage(
+            channel=channel,
+            sender_id="system",
+            chat_id=chat_id,
+            content=prompt,
+            metadata={"message_id": f"monologue_{int(time.time())}"},
+        )
 
-        context = "\n".join(context_lines[-10:]) if context_lines else "No recent context"
-
-        # Get prompt: custom from config or default fallback
-        if self._monologue_prompt:
-            user_prompt = self._monologue_prompt.format(
-                context=context,
-                current_time=current_time_str(),
-            )
-        else:
-            user_prompt = f"""Based on this recent conversation, provide a brief internal reflection about what happened, what patterns you notice, or what you learned.
-
-Recent conversation:
-{context}
-
-Current time: {current_time_str()}
-
-Be concise but insightful."""
-
-        system_prompt = "You are SpeckBot's inner voice. Reflect on the conversation and respond with your thoughts."
+        logger.info("Monologue: injecting prompt into session {}:{}", channel, chat_id)
 
         try:
-            response = await self.provider.chat_with_retry(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                model=self.model,
-            )
-
-            reflection = (response.content or "").strip()
-            if reflection:
-                # Write to journal and send to chat
-                await self._write_journal(reflection)
+            response = await self._process_message(msg)
+            if response and response.content:
+                # Wrap response in ``` format and send as thought
+                wrapped = f"💭\n```\n{response.content}\n```"
                 await self.bus.publish_outbound(
                     OutboundMessage(
                         channel=channel,
                         chat_id=chat_id,
-                        content=f"💭\n```\n{reflection}\n```",
+                        content=wrapped,
                         progress_type="thought",
                     )
                 )
-                logger.info("Monologue: journaled and sent ({})", reflection[:50])
+                # Also write to journal
+                await self._write_journal(response.content)
+                logger.info("Monologue: sent and journaled ({})", response.content[:50])
             else:
-                logger.info("Monologue: empty response from LLM")
-
+                logger.info("Monologue: no response")
         except Exception as e:
             logger.error("Monologue failed: {}", e)
 
