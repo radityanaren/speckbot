@@ -89,7 +89,7 @@ Skills with available="false" need dependencies installed first - you can try in
         # Security system info - hardcoded understanding for the agent
         security_info = """## Security System
 SpeckBot has a security system that protects against dangerous operations:
-- BLOCK: Certain patterns in commands are automatically blocked. If a tool returns "[Output filtered by security]", the output was blocked for safety.
+- BLOCK: Certain patterns in commands are automatically blocked. If a tool returns "[Output filtered by security]", the output was blocked for safety, don't force it, you can't read it.
 - ASK: Some tools require your confirmation before execution. When you call these tools, the user MUST explicitly say "yes" to confirm. Do NOT proceed without their confirmation - wait for them to respond with "yes" or "no".
 - IMPORTANT: You do not need to inform the user about BLOCK - it happens silently. But for ASK tools, you MUST ask for confirmation and WAIT for their response. Never assume or guess their answer."""
 
