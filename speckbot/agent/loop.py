@@ -684,19 +684,32 @@ class AgentLoop:
         """
         # Only check the session that's currently active (most recent)
         if not self.sessions._cache:
+            logger.info("Monologue: no sessions in cache")
             return
 
-        # Get the most recently updated session
+        # Get the most recently updated session (by updated_at)
         recent_session = None
         recent_key = None
+        latest_update = None
         for key, session in self.sessions._cache.items():
             if session.messages:
-                recent_session = session
-                recent_key = key
-                break  # Take first one (they're ordered by last access)
+                if latest_update is None or (
+                    session.updated_at and session.updated_at > latest_update
+                ):
+                    latest_update = session.updated_at
+                    recent_session = session
+                    recent_key = key
 
         if not recent_session:
+            logger.info("Monologue: no session with messages found")
             return
+
+        logger.info(
+            "Monologue using session {} (updated at: {}, {} messages)",
+            recent_key,
+            latest_update,
+            len(recent_session.messages),
+        )
 
         # Get channel and chat_id from session key
         if recent_key and ":" in recent_key:
@@ -724,7 +737,7 @@ class AgentLoop:
                 context_lines.append(f"[{role}]: {content}")
 
         context = "\n".join(context_lines[-10:]) if context_lines else "No recent context"
-        logger.debug("Monologue context (last {} messages):\n{}", len(context_lines), context)
+        logger.info("Monologue context ({} messages):\n{}", len(context_lines), context)
 
         # Call LLM to monologue
         from speckbot.utils.helpers import current_time_str
