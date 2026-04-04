@@ -653,13 +653,17 @@ class AgentLoop:
 
     async def _trigger_monologue_if_idle(self) -> None:
         """Check current session's last message time and trigger monologue if idle."""
+        logger.info("Monologue timeout reached - checking idle time...")
+
         # Only check the session that's currently active (most recent)
         if not self.sessions._cache:
+            logger.info("No sessions in cache")
             return
 
         # Get the most recently updated session
         recent_session = None
         recent_time = None
+        recent_key = None
         for key, session in self.sessions._cache.items():
             if session.messages:
                 msg_time = session.messages[-1].get("timestamp")
@@ -674,11 +678,19 @@ class AgentLoop:
                         continue
 
         if not recent_session or not recent_time:
+            logger.info("No session with timestamp found")
             return
 
         # Check idle time
         now = datetime.now().replace(tzinfo=recent_time.tzinfo)
         idle_seconds = (now - recent_time).total_seconds()
+
+        logger.info(
+            "Session {} idle for {}s (threshold: {}s)",
+            recent_key,
+            idle_seconds,
+            self._monologue_idle_seconds,
+        )
 
         if idle_seconds >= self._monologue_idle_seconds:
             # Get channel and chat_id from session key
