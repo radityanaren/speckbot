@@ -313,11 +313,13 @@ class AgentLoop:
 
         while self._running:
             try:
-                msg = await asyncio.wait_for(self.bus.consume_inbound(), timeout=1.0)
+                # Use idle_seconds as timeout - when timeout triggers, check for monologue
+                timeout = self._monologue_idle_seconds if self._monologue_enabled else 1.0
+                msg = await asyncio.wait_for(self.bus.consume_inbound(), timeout=timeout)
             except asyncio.TimeoutError:
-                # No message this second - check for monologue if enabled
+                # Timeout reached - check if we should trigger monologue
                 if self._monologue_enabled:
-                    await self._check_monologue_idle()
+                    await self._trigger_monologue_if_idle()
                 continue
             except asyncio.CancelledError:
                 # Preserve real task cancellation so shutdown can complete cleanly.
@@ -649,78 +651,44 @@ class AgentLoop:
         )
         return response.content if response else ""
 
-    async def _check_monologue_idle(self) -> None:
-        """Check all sessions for idle time and trigger monologue if needed."""
-        import time
-
-        now = time.time()
-
-        # Don't check too frequently (at least 30 seconds between checks)
-        if hasattr(self, "_last_monologue_check") and (now - self._last_monologue_check) < 30:
-            return
-        self._last_monologue_check = now
-
-        # Don't monologue if recently did one
-        if (
-            self._last_monologue_time
-            and (now - self._last_monologue_time) < self._monologue_idle_seconds
-        ):
+    async def _trigger_monologue_if_idle(self) -> None:
+        """Check current session's last message time and trigger monologue if idle."""
+        # Only check the session that's currently active (most recent)
+        if not self.sessions._cache:
             return
 
-        # Debug log
-        logger.info(
-            "MONOLOGUE CHECK: enabled={}, idle_threshold={}s, last_monologue={}",
-            self._monologue_enabled,
-            self._monologue_idle_seconds,
-            self._last_monologue_time,
-        )
+        # Get the most recently updated session
+        recent_session = None
+        recent_time = None
+        for key, session in self.sessions._cache.items():
+            if session.messages:
+                msg_time = session.messages[-1].get("timestamp")
+                if msg_time:
+                    try:
+                        dt = datetime.fromisoformat(msg_time.replace("Z", "+00:00"))
+                        if recent_time is None or dt > recent_time:
+                            recent_time = dt
+                            recent_session = session
+                            recent_key = key
+                    except Exception:
+                        continue
 
-        # Check all sessions (not just active tasks)
-        session_keys = list(self.sessions._cache.keys())
-        logger.info("MONOLOGUE: Checking {} sessions", len(session_keys))
+        if not recent_session or not recent_time:
+            return
 
-        for session_key in session_keys:
-            session = self.sessions.get_or_create(session_key)
+        # Check idle time
+        now = datetime.now().replace(tzinfo=recent_time.tzinfo)
+        idle_seconds = (now - recent_time).total_seconds()
 
-            logger.info("MONOLOGUE: Session {} has {} messages", session_key, len(session.messages))
+        if idle_seconds >= self._monologue_idle_seconds:
+            # Get channel and chat_id from session key
+            if ":" in recent_key:
+                channel, chat_id = recent_key.split(":", 1)
+            else:
+                channel, chat_id = "cli", recent_key
 
-            if not session.messages:
-                continue
-
-            # Get last message timestamp
-            last_msg = session.messages[-1]
-            last_msg_time = last_msg.get("timestamp")
-            logger.info("MONOLOGUE: Last msg time: {}", last_msg_time)
-
-            if not last_msg_time:
-                continue
-
-            try:
-                last_msg_dt = datetime.fromisoformat(last_msg_time.replace("Z", "+00:00"))
-                idle_seconds = (
-                    datetime.now().replace(tzinfo=last_msg_dt.tzinfo) - last_msg_dt
-                ).total_seconds()
-                logger.info(
-                    "MONOLOGUE: Session {} idle for {}s (threshold: {}s)",
-                    session_key,
-                    idle_seconds,
-                    self._monologue_idle_seconds,
-                )
-            except Exception as e:
-                logger.warning("MONOLOGUE: Failed to parse timestamp: {}", e)
-                continue
-
-            # If idle long enough, trigger monologue
-            if idle_seconds >= self._monologue_idle_seconds:
-                # Get channel and chat_id from session key
-                if ":" in session_key:
-                    channel, chat_id = session_key.split(":", 1)
-                else:
-                    channel, chat_id = "cli", session_key
-
-                logger.info("TRIGGERING MONOLOGUE for session {}", session_key)
-                await self._trigger_monologue(session, channel, chat_id)
-                break  # Only one monologue at a time
+            logger.info("Triggering monologue for session {}", recent_key)
+            await self._trigger_monologue(recent_session, channel, chat_id)
 
     async def _trigger_monologue(self, session: Session, channel: str, chat_id: str) -> None:
         """Actually trigger the monologue and send to user."""
@@ -777,12 +745,12 @@ Be concise but insightful."""
                     # Write to JOURNAL.md with auto-trim
                     await self._write_journal(journal_entry)
 
-                    # Tell the user in the chat as a "thought" (bubble style)
+                    # Tell the user in the chat as a "thought" with markdown code block
                     await self.bus.publish_outbound(
                         OutboundMessage(
                             channel=channel,
                             chat_id=chat_id,
-                            content=f"💭 {journal_entry}",
+                            content=f"💭\n```\n{journal_entry}\n```",
                             progress_type="thought",
                         )
                     )
