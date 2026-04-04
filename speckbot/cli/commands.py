@@ -636,7 +636,7 @@ def gateway(
 
     if rf_cfg.enabled:
         console.print(
-            f"[green]✓[/green] Reflections: after {rf_cfg.idle_seconds}s idle (max {rf_cfg.max_entries} entries)"
+            f"[green]✓[/green] Reflections: every {rf_cfg.interval_seconds}s (max {rf_cfg.max_entries} entries)"
         )
 
     async def run():

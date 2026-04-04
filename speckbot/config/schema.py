@@ -87,7 +87,7 @@ class ReflectionsConfig(Base):
     """Reflection system - time-triggered thinking inside agent loop."""
 
     enabled: bool = False
-    idle_seconds: int = 300  # Reflect after X seconds of idle
+    interval_seconds: int = 300  # Reflect after X seconds of idle
     max_entries: int = 10  # Keep last N journal entries
 
 

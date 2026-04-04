@@ -87,8 +87,8 @@ class AgentLoop:
         self._reflections_enabled = (
             reflections_config.get("enabled", False) if reflections_config else False
         )
-        self._reflections_idle_seconds = (
-            reflections_config.get("idle_seconds", 300) if reflections_config else 300
+        self._reflections_interval_seconds = (
+            reflections_config.get("interval_seconds", 300) if reflections_config else 300
         )
         self._reflections_max_entries = (
             reflections_config.get("max_entries", 10) if reflections_config else 10
@@ -651,7 +651,7 @@ class AgentLoop:
         # Don't reflect if recently reflected
         if (
             self._last_reflect_time
-            and (time.time() - self._last_reflect_time) < self._reflections_idle_seconds
+            and (time.time() - self._last_reflect_time) < self._reflections_interval_seconds
         ):
             return
 
@@ -678,7 +678,7 @@ class AgentLoop:
             return
 
         # Not enough idle time
-        if idle_seconds < self._reflections_idle_seconds:
+        if idle_seconds < self._reflections_interval_seconds:
             return
 
         # Time to reflect!
