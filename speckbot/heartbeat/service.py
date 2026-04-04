@@ -126,6 +126,9 @@ class HeartbeatService:
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
         logger.info("Heartbeat started (every {}s)", self.interval_seconds)
+
+    async def _run_loop(self) -> None:
+        """Main heartbeat loop."""
         while self._running:
             try:
                 await asyncio.sleep(self.interval_seconds)
@@ -135,6 +138,16 @@ class HeartbeatService:
                 break
             except Exception as e:
                 logger.error("Heartbeat error: {}", e)
+
+    def stop(self) -> None:
+        """Stop the heartbeat service."""
+        if not self._running:
+            return
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            self._task = None
+        logger.info("Heartbeat stopped")
 
     async def _tick(self) -> None:
         """Execute a single heartbeat tick."""
