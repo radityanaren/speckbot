@@ -88,7 +88,7 @@ class ThoughtsConfig(Base):
 
     enabled: bool = False
     interval_seconds: int = 24 * 60 * 60  # 1 day
-    keep_days: int = 7  # Keep journal entries for last N days
+    max_messages: int = 10  # Keep last N agent messages in thoughts session
 
 
 class GatewayConfig(Base):

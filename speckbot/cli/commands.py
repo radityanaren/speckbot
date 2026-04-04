@@ -638,7 +638,7 @@ def gateway(
         model=agent.model,
         on_notify=on_thoughts_notify,
         interval_seconds=th_cfg.interval_seconds,
-        keep_days=th_cfg.keep_days,
+        max_messages=th_cfg.max_messages,
         enabled=th_cfg.enabled,
     )
 
@@ -655,7 +655,7 @@ def gateway(
 
     if th_cfg.enabled:
         console.print(
-            f"[green]✓[/green] Thoughts: every {th_cfg.interval_seconds}s (keep {th_cfg.keep_days} days)"
+            f"[green]✓[/green] Thoughts: every {th_cfg.interval_seconds}s (last {th_cfg.max_messages} thoughts)"
         )
 
     async def run():

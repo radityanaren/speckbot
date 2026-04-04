@@ -19,7 +19,7 @@ from speckbot.utils.helpers import (
 class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
 
-    BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "HISTORY.md", "MEMORY.md", "JOURNAL.md"]
+    BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "HISTORY.md", "MEMORY.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
 
     # Hardcoded file descriptions - added BEFORE reading each file
@@ -29,7 +29,6 @@ class ContextBuilder:
         "USER.md": "File: User profile and preferences. Information about the user to personalize interactions.",
         "HISTORY.md": "File: Past conversation summaries. Archived conversations from previous sessions (consolidated when context gets full).",
         "MEMORY.md": "File: Memory index. Overview of all saved knowledges and projects with dates.",
-        "JOURNAL.md": "File: Your internal journal and reflections. Notes from your continuous thinking process.",
     }
 
     def __init__(self, workspace: Path, security=None):
@@ -45,6 +44,11 @@ class ContextBuilder:
         bootstrap = self._load_bootstrap_files()
         if bootstrap:
             parts.append(bootstrap)
+
+        # Load thoughts session (recent inner reflections)
+        thoughts = self._load_thoughts_session()
+        if thoughts:
+            parts.append(f"# Recent Thoughts\n\n{thoughts}\n")
 
         memory = self.memory.get_memory_context()
         if memory:
@@ -67,6 +71,39 @@ Skills with available="false" need dependencies installed first - you can try in
 {skills_summary}""")
 
         return "\n\n---\n\n".join(parts)
+
+    def _load_thoughts_session(self, max_messages: int = 10) -> str:
+        """Load recent thoughts from the thoughts session JSONL file."""
+        import json
+
+        thoughts_file = self.workspace / "sessions" / "thoughts.jsonl"
+        if not thoughts_file.exists():
+            return ""
+
+        try:
+            messages = []
+            with open(thoughts_file, encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        messages.append(json.loads(line))
+
+            # Get last N messages
+            recent = messages[-max_messages:] if len(messages) > max_messages else messages
+
+            # Format as readable text
+            lines = ["Recent thoughts from my continuous reflection:"]
+            for msg in recent:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                if content:
+                    # Truncate long content
+                    if len(content) > 300:
+                        content = content[:300] + "..."
+                    lines.append(f"- {content}")
+
+            return "\n".join(lines) if len(lines) > 1 else ""
+        except Exception:
+            return ""
 
     def _get_identity(self) -> str:
         """Get the core identity section."""

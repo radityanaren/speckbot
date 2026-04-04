@@ -1,9 +1,10 @@
-"""Thoughts service - continuous inner voice reflection."""
+"""Thoughts service - continuous inner voice reflection using JSONL sessions."""
 
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+import json
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
@@ -26,12 +27,14 @@ class ThoughtsService:
     """
     Continuous thoughts service that runs in the background.
 
-    Every interval (default 1 day), the service:
-    1. Asks the LLM to reflect on recent state
-    2. LLM decides: JOURNAL / SHARE / SKIP
-    3. JOURNAL → append to JOURNAL.md (with auto-trim old entries)
-    4. SHARE → evaluate → notify user via channel
-    5. SKIP → do nothing
+    Uses JSONL sessions like regular conversations:
+    1. Reads recent session context (what was agent working on?)
+    2. Asks LLM to reflect on recent state
+    3. LLM decides: JOURNAL / SHARE / SKIP
+    4. JOURNAL → write to sessions/thoughts.jsonl (like chatting with itself)
+    5. SHARE → evaluate → notify user via channel
+    6. SKIP → do nothing
+    7. Auto-trim to keep last N messages
     """
 
     def __init__(
@@ -41,7 +44,7 @@ class ThoughtsService:
         model: str,
         on_notify: Callable[[str], Coroutine[Any, Any, None]] | None = None,
         interval_seconds: int = 24 * 60 * 60,
-        keep_days: int = 7,
+        max_messages: int = 10,
         enabled: bool = True,
     ):
         self.workspace = workspace
@@ -49,95 +52,111 @@ class ThoughtsService:
         self.model = model
         self.on_notify = on_notify
         self.interval_seconds = interval_seconds
-        self.keep_days = keep_days
+        self.max_messages = max_messages
         self.enabled = enabled
         self._running = False
         self._task: asyncio.Task | None = None
 
     @property
-    def journal_file(self) -> Path:
-        return self.workspace / "JOURNAL.md"
+    def sessions_dir(self) -> Path:
+        return self.workspace / "sessions"
 
-    def _read_journal(self) -> str | None:
-        if self.journal_file.exists():
-            try:
-                return self.journal_file.read_text(encoding="utf-8")
-            except Exception:
-                return None
-        return None
+    @property
+    def session_file(self) -> Path:
+        return self.sessions_dir / "thoughts.jsonl"
 
-    def _write_journal(self, content: str) -> None:
+    def _ensure_sessions_dir(self) -> None:
+        """Ensure sessions directory exists."""
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+
+    def _read_session(self) -> list[dict[str, Any]]:
+        """Read thoughts session messages."""
+        if not self.session_file.exists():
+            return []
         try:
-            self.journal_file.write_text(content, encoding="utf-8")
+            messages = []
+            with open(self.session_file, encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        messages.append(json.loads(line))
+            return messages
         except Exception as e:
-            logger.error("Failed to write journal: {}", e)
+            logger.warning("Failed to read thoughts session: {}", e)
+            return []
 
-    def _trim_journal(self, content: str) -> str:
-        """Trim journal to keep only entries from last N days."""
-        lines = content.split("\n")
-        if not lines:
-            return content
+    def _write_message(self, role: str, content: str) -> None:
+        """Write a message to the thoughts session."""
+        self._ensure_sessions_dir()
+        entry = {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat(),
+        }
+        try:
+            with open(self.session_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.error("Failed to write thoughts message: {}", e)
 
-        # Find the cutoff date
-        cutoff = datetime.now() - timedelta(days=self.keep_days)
-        cutoff_str = cutoff.strftime("%Y-%m-%d")
+    def _trim_session(self) -> None:
+        """Trim session to keep only last N messages (not including system prompt)."""
+        messages = self._read_session()
+        if len(messages) <= self.max_messages:
+            return
 
-        # Find entries newer than cutoff
-        kept_lines: list[str] = []
-        found_recent = False
+        # Keep last N messages
+        trimmed = messages[-self.max_messages :]
 
-        for line in lines:
-            # Check if this is a date header (## YYYY-MM-DD or ### YYYY-MM-DD)
-            stripped = line.strip()
-            if stripped.startswith("##") or stripped.startswith("###"):
-                # Extract date from the line
-                import re
+        # Rewrite the file
+        try:
+            with open(self.session_file, "w", encoding="utf-8") as f:
+                for msg in trimmed:
+                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            logger.info("Trimmed thoughts session to {} messages", self.max_messages)
+        except Exception as e:
+            logger.error("Failed to trim thoughts session: {}", e)
 
-                match = re.search(r"\d{4}-\d{2}-\d{2}", line)
-                if match:
-                    date_str = match.group(0)
-                    try:
-                        entry_date = datetime.strptime(date_str, "%Y-%m-%d")
-                        if entry_date >= cutoff:
-                            found_recent = True
-                    except ValueError:
-                        pass
-            if found_recent:
-                kept_lines.append(line)
+    def _get_recent_context(self, limit: int = 5) -> str:
+        """Get context from recent regular sessions (what was agent working on?)."""
+        if not self.sessions_dir.exists():
+            return ""
 
-        # If we removed everything, keep at least the last few lines
-        if not kept_lines and lines:
-            kept_lines = lines[-20:]
+        # Get all session files except thoughts
+        session_files = []
+        for f in self.sessions_dir.glob("*.jsonl"):
+            if f.name != "thoughts.jsonl":
+                session_files.append(f)
 
-        return "\n".join(kept_lines)
+        if not session_files:
+            return ""
 
-    def _append_journal(self, entry: str) -> None:
-        """Append a new entry to the journal with auto-trim."""
-        from speckbot.utils.helpers import current_time_str
+        # Sort by modification time, most recent first
+        session_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
-        current = self._read_journal() or ""
+        # Read last N sessions
+        context_parts = []
+        for session_file in session_files[:3]:  # Last 3 sessions
+            try:
+                messages = []
+                with open(session_file, encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip():
+                            messages.append(json.loads(line))
 
-        # Build new entry
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        timestamp = current_time_str().split(",")[0]  # Just the date part
+                # Get last few messages from this session
+                recent = messages[-limit:] if len(messages) > limit else messages
+                for msg in recent:
+                    role = msg.get("role", "")
+                    content = msg.get("content", "")
+                    if content and role in ("user", "assistant"):
+                        # Truncate long content
+                        if len(content) > 200:
+                            content = content[:200] + "..."
+                        context_parts.append(f"[{role}]: {content}")
+            except Exception:
+                continue
 
-        new_entry = f"\n## {date_str}\n- [{timestamp}] {entry}\n"
-
-        # Append to existing
-        if current:
-            # Add separator if needed
-            if not current.rstrip().endswith("\n"):
-                new_entry = "\n" + new_entry
-            updated = current + new_entry
-        else:
-            # New file
-            updated = f"# Journal\n{new_entry}"
-
-        # Trim old entries
-        trimmed = self._trim_journal(updated)
-
-        self._write_journal(trimmed)
-        logger.info("Thought saved to journal: {}", entry[:50])
+        return "\n".join(context_parts[-10:])  # Last 10 context lines total
 
     async def _decide(self) -> tuple[str, str]:
         """Ask LLM to decide: JOURNAL / SHARE / SKIP.
@@ -145,6 +164,16 @@ class ThoughtsService:
         Returns (decision, content).
         """
         from speckbot.utils.helpers import current_time_str
+
+        # Get recent context from other sessions
+        context = self._get_recent_context()
+
+        user_message = f"Current Time: {current_time_str()}"
+
+        if context:
+            user_message += f"\n\nRecent conversations:\n{context}"
+
+        user_message += "\n\nWhat is on your mind? What do you observe or want to share?"
 
         response = await self.provider.chat_with_retry(
             messages=[
@@ -154,7 +183,7 @@ class ThoughtsService:
                 },
                 {
                     "role": "user",
-                    "content": f"Current Time: {current_time_str()}\n\nWhat is on your mind? What do you observe or want to share?",
+                    "content": user_message,
                 },
             ],
             model=self.model,
@@ -219,7 +248,10 @@ class ThoughtsService:
 
             if decision == "JOURNAL":
                 if content:
-                    self._append_journal(content)
+                    # Write to session like a conversation with itself
+                    self._write_message("user", "Reflect: " + content)
+                    # Trim old messages
+                    self._trim_session()
                 logger.info("Thought: journaled")
 
             elif decision == "SHARE":
