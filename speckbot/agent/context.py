@@ -108,6 +108,8 @@ Your workspace is at: {workspace_path}
 - knowledges/ - Factual/technical knowledge (individual folders)
 - projects/ - Project-specific context (individual folders)
 - HISTORY.md - Date-indexed conversation log
+- MEMORY.md - Memory index with obsidian-style links
+- JOURNAL.md - Your internal journal and reflections
 - Custom skills: skills/{{skill-name}}/SKILL.md
 
 {platform_policy}
