@@ -83,15 +83,20 @@ class AgentLoop:
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 
-        # Monologue config
+        # Monologue config - handle both snake_case and camelCase
         self._monologue_enabled = (
             monologue_config.get("enabled", False) if monologue_config else False
         )
+        # Try both idle_seconds and idleSeconds
         self._monologue_idle_seconds = (
-            monologue_config.get("idle_seconds", 300) if monologue_config else 300
+            (monologue_config.get("idle_seconds") or monologue_config.get("idleSeconds") or 300)
+            if monologue_config
+            else 300
         )
         self._monologue_max_entries = (
-            monologue_config.get("max_entries", 10) if monologue_config else 10
+            (monologue_config.get("max_entries") or monologue_config.get("maxEntries") or 10)
+            if monologue_config
+            else 10
         )
         self._last_message_time: float | None = None
         self._last_monologue_time: float | None = None
@@ -649,6 +654,13 @@ class AgentLoop:
 
         now = time.time()
 
+        # Debug log
+        logger.debug(
+            "Checking monologue idle - enabled: {}, idle_seconds: {}",
+            self._monologue_enabled,
+            self._monologue_idle_seconds,
+        )
+
         # Don't check too frequently (at least 10 seconds between checks)
         if hasattr(self, "_last_monologue_check") and (now - self._last_monologue_check) < 10:
             return
@@ -662,7 +674,10 @@ class AgentLoop:
             return
 
         # Check all sessions (not just active tasks)
-        for session_key in list(self.sessions._cache.keys()):
+        session_keys = list(self.sessions._cache.keys())
+        logger.debug("Checking {} sessions for monologue", len(session_keys))
+
+        for session_key in session_keys:
             session = self.sessions.get_or_create(session_key)
 
             if not session.messages:
@@ -681,6 +696,13 @@ class AgentLoop:
                 ).total_seconds()
             except Exception:
                 continue
+
+            logger.debug(
+                "Session {} idle for {}s (threshold: {}s)",
+                session_key,
+                idle_seconds,
+                self._monologue_idle_seconds,
+            )
 
             # If idle long enough, trigger monologue
             if idle_seconds >= self._monologue_idle_seconds:
