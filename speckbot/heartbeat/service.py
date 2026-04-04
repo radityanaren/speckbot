@@ -57,7 +57,7 @@ class HeartbeatService:
         model: str,
         on_execute: Callable[[str], Coroutine[Any, Any, str]] | None = None,
         on_notify: Callable[[str], Coroutine[Any, Any, None]] | None = None,
-        interval_s: int = 30 * 60,
+        interval_seconds: int = 30 * 60,
         enabled: bool = True,
     ):
         self.workspace = workspace
@@ -65,7 +65,7 @@ class HeartbeatService:
         self.model = model
         self.on_execute = on_execute
         self.on_notify = on_notify
-        self.interval_s = interval_s
+        self.interval_seconds = interval_seconds
         self.enabled = enabled
         self._running = False
         self._task: asyncio.Task | None = None
@@ -91,12 +91,18 @@ class HeartbeatService:
 
         response = await self.provider.chat_with_retry(
             messages=[
-                {"role": "system", "content": "You are a heartbeat agent. Call the heartbeat tool to report your decision."},
-                {"role": "user", "content": (
-                    f"Current Time: {current_time_str()}\n\n"
-                    "Review the following HEARTBEAT.md and decide whether there are active tasks.\n\n"
-                    f"{content}"
-                )},
+                {
+                    "role": "system",
+                    "content": "You are a heartbeat agent. Call the heartbeat tool to report your decision.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Current Time: {current_time_str()}\n\n"
+                        "Review the following HEARTBEAT.md and decide whether there are active tasks.\n\n"
+                        f"{content}"
+                    ),
+                },
             ],
             tools=_HEARTBEAT_TOOL,
             model=self.model,
@@ -119,20 +125,10 @@ class HeartbeatService:
 
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
-        logger.info("Heartbeat started (every {}s)", self.interval_s)
-
-    def stop(self) -> None:
-        """Stop the heartbeat service."""
-        self._running = False
-        if self._task:
-            self._task.cancel()
-            self._task = None
-
-    async def _run_loop(self) -> None:
-        """Main heartbeat loop."""
+        logger.info("Heartbeat started (every {}s)", self.interval_seconds)
         while self._running:
             try:
-                await asyncio.sleep(self.interval_s)
+                await asyncio.sleep(self.interval_seconds)
                 if self._running:
                     await self._tick()
             except asyncio.CancelledError:
@@ -164,7 +160,10 @@ class HeartbeatService:
 
                 if response:
                     should_notify = await evaluate_response(
-                        response, tasks, self.provider, self.model,
+                        response,
+                        tasks,
+                        self.provider,
+                        self.model,
                     )
                     if should_notify and self.on_notify:
                         logger.info("Heartbeat: completed, delivering response")

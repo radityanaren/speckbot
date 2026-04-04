@@ -613,7 +613,7 @@ def gateway(
         model=agent.model,
         on_execute=on_heartbeat_execute,
         on_notify=on_heartbeat_notify,
-        interval_s=hb_cfg.interval_s,
+        interval_seconds=hb_cfg.interval_seconds,
         enabled=hb_cfg.enabled,
     )
 
@@ -626,7 +626,7 @@ def gateway(
     if cron_status["jobs"] > 0:
         console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
 
-    console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
+    console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_seconds}s")
 
     async def run():
         # Run Dream (memory cleanup) on startup
