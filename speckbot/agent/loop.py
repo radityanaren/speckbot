@@ -645,13 +645,14 @@ class AgentLoop:
         return response.content if response else ""
 
     async def _maybe_reflect(self, session: Session, channel: str, chat_id: str) -> None:
-        """Trigger reflection if enough idle time has passed."""
+        """Trigger reflection at regular intervals (not based on idle time)."""
         import time
 
         # Don't reflect if recently reflected
+        now = time.time()
         if (
             self._last_reflect_time
-            and (time.time() - self._last_reflect_time) < self._reflections_interval_seconds
+            and (now - self._last_reflect_time) < self._reflections_interval_seconds
         ):
             return
 
@@ -659,31 +660,25 @@ class AgentLoop:
         if not session.messages:
             return
 
-        # Check if we've been idle long enough (no user messages recently)
-        user_messages = [m for m in session.messages if m.get("role") == "user"]
-        if not user_messages:
-            return
-
-        # Check time since last user message
-        last_user_time = session.messages[-1].get("timestamp")
-        if not last_user_time:
-            return
-
-        try:
-            last_msg_dt = datetime.fromisoformat(last_user_time.replace("Z", "+00:00"))
-            idle_seconds = (
-                datetime.now().replace(tzinfo=last_msg_dt.tzinfo) - last_msg_dt
-            ).total_seconds()
-        except Exception:
-            return
-
-        # Not enough idle time
-        if idle_seconds < self._reflections_interval_seconds:
-            return
+        # Set first reflect time if not set
+        if not self._last_reflect_time:
+            # Get session creation time from messages
+            first_msg = session.messages[0].get("timestamp")
+            if first_msg:
+                try:
+                    first_msg_dt = datetime.fromisoformat(first_msg.replace("Z", "+00:00"))
+                    session_start_seconds = (
+                        datetime.now().replace(tzinfo=first_msg_dt.tzinfo) - first_msg_dt
+                    ).total_seconds()
+                    # If session just started, don't reflect yet
+                    if session_start_seconds < self._reflections_interval_seconds:
+                        return
+                except Exception:
+                    pass
 
         # Time to reflect!
         logger.info("Triggering reflection for session {}", session.key)
-        self._last_reflect_time = time.time()
+        self._last_reflect_time = now
 
         # Build context from recent session messages
         recent_msgs = session.messages[-20:]  # Last 20 messages
