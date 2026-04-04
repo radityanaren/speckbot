@@ -16,9 +16,9 @@ from loguru import logger
 
 from speckbot.agent.context import ContextBuilder
 from speckbot.agent.memory import MemoryConsolidator
+from speckbot.agent.skills import BUILTIN_SKILLS_DIR
 from speckbot.agent.subagent import SubagentManager
 from speckbot.agent.tools.cron import CronTool
-from speckbot.agent.skills import BUILTIN_SKILLS_DIR
 from speckbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from speckbot.agent.tools.message import MessageTool
 from speckbot.agent.tools.registry import ToolRegistry
@@ -716,15 +716,16 @@ class AgentLoop:
         if self._monologue_prompt:
             prompt = self._monologue_prompt
         else:
-            prompt = "Take a moment to reflect on what we've been discussing. What patterns do you notice? What stands out to you?"
+            prompt = "[Internal monologue] Briefly reflect on what we discussed. 4-5 sentences max."
 
         # Inject as a system message to preserve full agent context
         await self._trigger_monologue(channel, chat_id, prompt)
 
     async def _trigger_monologue(self, channel: str, chat_id: str, prompt: str) -> None:
         """Inject monologue prompt into session and process through normal agent loop."""
-        from speckbot.bus.events import InboundMessage
         import time
+
+        from speckbot.bus.events import InboundMessage
 
         self._last_monologue_time = time.time()
 
@@ -734,16 +735,21 @@ class AgentLoop:
             sender_id="system",
             chat_id=chat_id,
             content=prompt,
-            metadata={"message_id": f"monologue_{int(time.time())}"},
+            metadata={"message_id": f"monologue_{int(time.time())}", "is_monologue": True},
         )
 
-        logger.info("Monologue: injecting prompt into session {}:{}", channel, chat_id)
+        logger.info("Monologue: injecting inner thought into session {}:{}", channel, chat_id)
 
         try:
             response = await self._process_message(msg)
             if response and response.content:
+                # Keep it short - truncate if needed
+                text = response.content.strip()
+                if len(text) > 300:
+                    text = text[:300].rsplit(" ", 1)[0] + "..."
+
                 # Wrap response in ``` format and send as thought
-                wrapped = f"💭\n```\n{response.content}\n```"
+                wrapped = f"💭\n```\n{text}\n```"
                 await self.bus.publish_outbound(
                     OutboundMessage(
                         channel=channel,
@@ -753,8 +759,8 @@ class AgentLoop:
                     )
                 )
                 # Also write to journal
-                await self._write_journal(response.content)
-                logger.info("Monologue: sent and journaled ({})", response.content[:50])
+                await self._write_journal(text)
+                logger.info("Monologue: inner thought journaled ({})", text[:50])
             else:
                 logger.info("Monologue: no response")
         except Exception as e:
@@ -763,6 +769,7 @@ class AgentLoop:
     async def _write_journal(self, entry: str) -> None:
         """Write a journal entry to JOURNAL.md with auto-trim."""
         from datetime import datetime
+
         from speckbot.utils.helpers import current_time_str
 
         journal_file = self.workspace / "JOURNAL.md"
