@@ -66,7 +66,7 @@ class AgentLoop:
         mcp_servers: dict | None = None,
         channels_config: ChannelsConfig | None = None,
         hooks_config: dict | None = None,
-        reflections_config: dict | None = None,
+        monologue_config: dict | None = None,
     ):
         from speckbot.config.schema import ExecToolConfig, WebSearchConfig
 
@@ -83,18 +83,18 @@ class AgentLoop:
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 
-        # Reflections config
-        self._reflections_enabled = (
-            reflections_config.get("enabled", False) if reflections_config else False
+        # Monologue config
+        self._monologue_enabled = (
+            monologue_config.get("enabled", False) if monologue_config else False
         )
-        self._reflections_interval_seconds = (
-            reflections_config.get("interval_seconds", 300) if reflections_config else 300
+        self._monologue_idle_seconds = (
+            monologue_config.get("idle_seconds", 300) if monologue_config else 300
         )
-        self._reflections_max_entries = (
-            reflections_config.get("max_entries", 10) if reflections_config else 10
+        self._monologue_max_entries = (
+            monologue_config.get("max_entries", 10) if monologue_config else 10
         )
         self._last_message_time: float | None = None
-        self._last_reflect_time: float | None = None
+        self._last_monologue_time: float | None = None
 
         # Create shared security service first
         from speckbot.agent.security import SecurityService
@@ -563,9 +563,9 @@ class AgentLoop:
 
         self._last_message_time = time.time()
 
-        # Check if we should trigger a reflection
-        if self._reflections_enabled:
-            await self._maybe_reflect(session, msg.channel, msg.chat_id)
+        # Check if we should trigger a monologue
+        if self._monologue_enabled:
+            await self._maybe_monologue(session, msg.channel, msg.chat_id)
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None
@@ -644,41 +644,42 @@ class AgentLoop:
         )
         return response.content if response else ""
 
-    async def _maybe_reflect(self, session: Session, channel: str, chat_id: str) -> None:
-        """Trigger reflection at regular intervals (not based on idle time)."""
+    async def _maybe_monologue(self, session: Session, channel: str, chat_id: str) -> None:
+        """Trigger monologue after idle time has passed."""
         import time
 
-        # Don't reflect if recently reflected
+        # Don't monologue if recently did one
         now = time.time()
         if (
-            self._last_reflect_time
-            and (now - self._last_reflect_time) < self._reflections_interval_seconds
+            self._last_monologue_time
+            and (now - self._last_monologue_time) < self._monologue_idle_seconds
         ):
             return
 
-        # Don't reflect if no messages in session
+        # Don't monologue if no messages in session
         if not session.messages:
             return
 
-        # Set first reflect time if not set
-        if not self._last_reflect_time:
-            # Get session creation time from messages
-            first_msg = session.messages[0].get("timestamp")
-            if first_msg:
-                try:
-                    first_msg_dt = datetime.fromisoformat(first_msg.replace("Z", "+00:00"))
-                    session_start_seconds = (
-                        datetime.now().replace(tzinfo=first_msg_dt.tzinfo) - first_msg_dt
-                    ).total_seconds()
-                    # If session just started, don't reflect yet
-                    if session_start_seconds < self._reflections_interval_seconds:
-                        return
-                except Exception:
-                    pass
+        # Check if we've been idle long enough (no user messages recently)
+        last_msg_time = session.messages[-1].get("timestamp")
+        if not last_msg_time:
+            return
 
-        # Time to reflect!
-        logger.info("Triggering reflection for session {}", session.key)
-        self._last_reflect_time = now
+        try:
+            last_msg_dt = datetime.fromisoformat(last_msg_time.replace("Z", "+00:00"))
+            idle_seconds = (
+                datetime.now().replace(tzinfo=last_msg_dt.tzinfo) - last_msg_dt
+            ).total_seconds()
+        except Exception:
+            return
+
+        # Not enough idle time
+        if idle_seconds < self._monologue_idle_seconds:
+            return
+
+        # Time to monologue!
+        logger.info("Triggering monologue for session {}", session.key)
+        self._last_monologue_time = now
 
         # Build context from recent session messages
         recent_msgs = session.messages[-20:]  # Last 20 messages
@@ -693,10 +694,10 @@ class AgentLoop:
 
         context = "\n".join(context_lines[-10:]) if context_lines else "No recent context"
 
-        # Call LLM to reflect
+        # Call LLM to monologue
         from speckbot.utils.helpers import current_time_str
 
-        reflection_prompt = f"""You are SpeckBot's inner voice. Reflect on the recent conversation.
+        monologue_prompt = f"""You are SpeckBot's inner voice. Reflect on the recent conversation.
 
 Recent conversation:
 {context}
@@ -716,7 +717,7 @@ Be concise but insightful."""
                         "role": "system",
                         "content": "You are SpeckBot's inner voice. Be concise and insightful.",
                     },
-                    {"role": "user", "content": reflection_prompt},
+                    {"role": "user", "content": monologue_prompt},
                 ],
                 model=self.model,
             )
@@ -729,18 +730,19 @@ Be concise but insightful."""
                     # Write to JOURNAL.md with auto-trim
                     await self._write_journal(journal_entry)
 
-                    # Tell the user in the chat
+                    # Tell the user in the chat as a "thought" (bubble style)
                     await self.bus.publish_outbound(
                         OutboundMessage(
                             channel=channel,
                             chat_id=chat_id,
-                            content=f"[Note] {journal_entry}",
+                            content=f"💭 {journal_entry}",
+                            progress_type="thought",
                         )
                     )
-                    logger.info("Reflection journaled: {}", journal_entry[:50])
+                    logger.info("Monologue journaled: {}", journal_entry[:50])
 
         except Exception as e:
-            logger.error("Reflection failed: {}", e)
+            logger.error("Monologue failed: {}", e)
 
     async def _write_journal(self, entry: str) -> None:
         """Write a journal entry to JOURNAL.md with auto-trim."""

@@ -505,8 +505,8 @@ def gateway(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         hooks_config=config.detector.model_dump() if config.detector else None,
-        reflections_config=config.gateway.reflections.model_dump()
-        if config.gateway.reflections
+        monologue_config=config.gateway.monologue.model_dump()
+        if config.gateway.monologue
         else None,
     )
 
@@ -620,8 +620,8 @@ def gateway(
         enabled=hb_cfg.enabled,
     )
 
-    # Reflections config
-    rf_cfg = config.gateway.reflections
+    # Monologue config
+    mono_cfg = config.gateway.monologue
 
     if channels.enabled_channels:
         console.print(f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")
@@ -634,9 +634,9 @@ def gateway(
 
     console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_seconds}s")
 
-    if rf_cfg.enabled:
+    if mono_cfg.enabled:
         console.print(
-            f"[green]✓[/green] Reflections: every {rf_cfg.interval_seconds}s (max {rf_cfg.max_entries} entries)"
+            f"[green]✓[/green] Monologue: after {mono_cfg.idle_seconds}s idle (max {mono_cfg.max_entries} entries)"
         )
 
     async def run():

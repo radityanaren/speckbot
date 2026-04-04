@@ -83,11 +83,11 @@ class HeartbeatConfig(Base):
     interval_seconds: int = 30 * 60  # 30 minutes
 
 
-class ReflectionsConfig(Base):
-    """Reflection system - time-triggered thinking inside agent loop."""
+class MonologueConfig(Base):
+    """Monologue system - time-triggered inner thinking inside agent loop."""
 
     enabled: bool = False
-    interval_seconds: int = 300  # Reflect after X seconds of idle
+    idle_seconds: int = 300  # Reflect after X seconds of idle
     max_entries: int = 10  # Keep last N journal entries
 
 
@@ -97,7 +97,7 @@ class GatewayConfig(Base):
     host: str = "0.0.0.0"
     port: int = 18790
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
-    reflections: ReflectionsConfig = Field(default_factory=ReflectionsConfig)
+    monologue: MonologueConfig = Field(default_factory=MonologueConfig)
 
 
 class WebSearchConfig(Base):
