@@ -83,12 +83,21 @@ class HeartbeatConfig(Base):
     interval_seconds: int = 30 * 60  # 30 minutes
 
 
+class ThoughtsConfig(Base):
+    """Thoughts service configuration."""
+
+    enabled: bool = False
+    interval_seconds: int = 24 * 60 * 60  # 1 day
+    keep_days: int = 7  # Keep journal entries for last N days
+
+
 class GatewayConfig(Base):
     """Gateway/server configuration."""
 
     host: str = "0.0.0.0"
     port: int = 18790
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
+    thoughts: ThoughtsConfig = Field(default_factory=ThoughtsConfig)
 
 
 class WebSearchConfig(Base):

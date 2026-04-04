@@ -19,7 +19,7 @@ from speckbot.utils.helpers import (
 class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
 
-    BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "HISTORY.md", "MEMORY.md"]
+    BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "HISTORY.md", "MEMORY.md", "JOURNAL.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
 
     # Hardcoded file descriptions - added BEFORE reading each file
@@ -29,6 +29,7 @@ class ContextBuilder:
         "USER.md": "File: User profile and preferences. Information about the user to personalize interactions.",
         "HISTORY.md": "File: Past conversation summaries. Archived conversations from previous sessions (consolidated when context gets full).",
         "MEMORY.md": "File: Memory index. Overview of all saved knowledges and projects with dates.",
+        "JOURNAL.md": "File: Your internal journal and reflections. Notes from your continuous thinking process.",
     }
 
     def __init__(self, workspace: Path, security=None):
