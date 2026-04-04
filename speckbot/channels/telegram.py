@@ -204,6 +204,27 @@ class TelegramChannel(BaseChannel):
         self._bot_user_id: int | None = None
         self._bot_username: str | None = None
 
+    @property
+    def group_policy(self) -> str:
+        """Return the group's policy ('open' or 'mention')."""
+        return self.config.group_policy
+
+    @property
+    def bot_user_id(self) -> str | None:
+        """Return the bot's user ID for mention detection."""
+        return str(self._bot_user_id) if self._bot_user_id else None
+
+    def _was_mentioned(
+        self,
+        content: str,
+        mentions: list[dict[str, Any]] | None = None,
+    ) -> bool:
+        """Check if the bot was mentioned in the message."""
+        if not self._bot_username:
+            return False
+        handle = f"@{self._bot_username}".lower()
+        return handle in content.lower()
+
     def is_allowed(self, sender_id: str) -> bool:
         """Preserve Telegram's legacy id|username allowlist matching."""
         if super().is_allowed(sender_id):
@@ -670,7 +691,7 @@ class TelegramChannel(BaseChannel):
         if content and self._bot_username:
             suffix = f"@{self._bot_username}"
             if content.lower().endswith(suffix.lower()):
-                content = content[:-len(suffix)].strip()
+                content = content[: -len(suffix)].strip()
 
         await self._handle_message(
             sender_id=self._sender_id(user),
