@@ -66,6 +66,7 @@ class AgentLoop:
         mcp_servers: dict | None = None,
         channels_config: ChannelsConfig | None = None,
         hooks_config: dict | None = None,
+        reflections_config: dict | None = None,
     ):
         from speckbot.config.schema import ExecToolConfig, WebSearchConfig
 
@@ -81,6 +82,19 @@ class AgentLoop:
         self.exec_config = exec_config or ExecToolConfig()
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
+
+        # Reflections config
+        self._reflections_enabled = (
+            reflections_config.get("enabled", False) if reflections_config else False
+        )
+        self._reflections_idle_seconds = (
+            reflections_config.get("idle_seconds", 300) if reflections_config else 300
+        )
+        self._reflections_max_entries = (
+            reflections_config.get("max_entries", 10) if reflections_config else 10
+        )
+        self._last_message_time: float | None = None
+        self._last_reflect_time: float | None = None
 
         # Create shared security service first
         from speckbot.agent.security import SecurityService
@@ -544,6 +558,15 @@ class AgentLoop:
         self.sessions.save(session)
         self._schedule_background(self.memory_consolidator.maybe_consolidate_by_tokens(session))
 
+        # Update reflection tracking - user sent a message, so reset idle timer
+        import time
+
+        self._last_message_time = time.time()
+
+        # Check if we should trigger a reflection
+        if self._reflections_enabled:
+            await self._maybe_reflect(session, msg.channel, msg.chat_id)
+
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None
 
@@ -620,3 +643,146 @@ class AgentLoop:
             msg, session_key=session_key, on_progress=on_progress
         )
         return response.content if response else ""
+
+    async def _maybe_reflect(self, session: Session, channel: str, chat_id: str) -> None:
+        """Trigger reflection if enough idle time has passed."""
+        import time
+
+        # Don't reflect if recently reflected
+        if (
+            self._last_reflect_time
+            and (time.time() - self._last_reflect_time) < self._reflections_idle_seconds
+        ):
+            return
+
+        # Don't reflect if no messages in session
+        if not session.messages:
+            return
+
+        # Check if we've been idle long enough (no user messages recently)
+        user_messages = [m for m in session.messages if m.get("role") == "user"]
+        if not user_messages:
+            return
+
+        # Check time since last user message
+        last_user_time = session.messages[-1].get("timestamp")
+        if not last_user_time:
+            return
+
+        try:
+            last_msg_dt = datetime.fromisoformat(last_user_time.replace("Z", "+00:00"))
+            idle_seconds = (
+                datetime.now().replace(tzinfo=last_msg_dt.tzinfo) - last_msg_dt
+            ).total_seconds()
+        except Exception:
+            return
+
+        # Not enough idle time
+        if idle_seconds < self._reflections_idle_seconds:
+            return
+
+        # Time to reflect!
+        logger.info("Triggering reflection for session {}", session.key)
+        self._last_reflect_time = time.time()
+
+        # Build context from recent session messages
+        recent_msgs = session.messages[-20:]  # Last 20 messages
+        context_lines = []
+        for m in recent_msgs:
+            role = m.get("role", "")
+            content = m.get("content", "")
+            if isinstance(content, str) and len(content) > 300:
+                content = content[:300] + "..."
+            if content and role in ("user", "assistant"):
+                context_lines.append(f"[{role}]: {content}")
+
+        context = "\n".join(context_lines[-10:]) if context_lines else "No recent context"
+
+        # Call LLM to reflect
+        from speckbot.utils.helpers import current_time_str
+
+        reflection_prompt = f"""You are SpeckBot's inner voice. Reflect on the recent conversation.
+
+Recent conversation:
+{context}
+
+Current time: {current_time_str()}
+
+Decide what to do:
+- If it's worth noting as an internal journal entry → respond: JOURNAL: <your reflection>
+- If nothing noteworthy → respond: SKIP
+
+Be concise but insightful."""
+
+        try:
+            response = await self.provider.chat_with_retry(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are SpeckBot's inner voice. Be concise and insightful.",
+                    },
+                    {"role": "user", "content": reflection_prompt},
+                ],
+                model=self.model,
+            )
+
+            content = (response.content or "").strip()
+
+            if content.upper().startswith("JOURNAL:"):
+                journal_entry = content[7:].strip()
+                if journal_entry:
+                    # Write to JOURNAL.md with auto-trim
+                    await self._write_journal(journal_entry)
+
+                    # Tell the user in the chat
+                    await self.bus.publish_outbound(
+                        OutboundMessage(
+                            channel=channel,
+                            chat_id=chat_id,
+                            content=f"[Note] {journal_entry}",
+                        )
+                    )
+                    logger.info("Reflection journaled: {}", journal_entry[:50])
+
+        except Exception as e:
+            logger.error("Reflection failed: {}", e)
+
+    async def _write_journal(self, entry: str) -> None:
+        """Write a journal entry to JOURNAL.md with auto-trim."""
+        from datetime import datetime
+        from speckbot.utils.helpers import current_time_str
+
+        journal_file = self.workspace / "JOURNAL.md"
+        current = ""
+        if journal_file.exists():
+            current = journal_file.read_text(encoding="utf-8") or ""
+
+        # Build new entry
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        timestamp = current_time_str().split(",")[0]
+        new_entry = f"\n## {date_str}\n- [{timestamp}] {entry}\n"
+
+        # Append to existing
+        if current:
+            if not current.rstrip().endswith("\n"):
+                new_entry = "\n" + new_entry
+            updated = current + new_entry
+        else:
+            updated = f"# Journal\n{new_entry}"
+
+        # Trim to keep last N entries
+        lines = updated.split("\n")
+        entry_count = sum(1 for line in lines if line.strip().startswith("- ["))
+        if entry_count > self._reflections_max_entries:
+            # Keep only last N entries
+            keep_lines = []
+            found_entries = 0
+            for line in reversed(lines):
+                if line.strip().startswith("- ["):
+                    found_entries += 1
+                    if found_entries > self._reflections_max_entries:
+                        continue
+                keep_lines.insert(0, line)
+            updated = "\n".join(keep_lines)
+
+        journal_file.write_text(updated, encoding="utf-8")

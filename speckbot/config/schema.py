@@ -83,12 +83,12 @@ class HeartbeatConfig(Base):
     interval_seconds: int = 30 * 60  # 30 minutes
 
 
-class ThoughtsConfig(Base):
-    """Thoughts service configuration."""
+class ReflectionsConfig(Base):
+    """Reflection system - time-triggered thinking inside agent loop."""
 
     enabled: bool = False
-    interval_seconds: int = 24 * 60 * 60  # 1 day
-    max_messages: int = 10  # Keep last N agent messages in thoughts session
+    idle_seconds: int = 300  # Reflect after X seconds of idle
+    max_entries: int = 10  # Keep last N journal entries
 
 
 class GatewayConfig(Base):
@@ -97,7 +97,7 @@ class GatewayConfig(Base):
     host: str = "0.0.0.0"
     port: int = 18790
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
-    thoughts: ThoughtsConfig = Field(default_factory=ThoughtsConfig)
+    reflections: ReflectionsConfig = Field(default_factory=ReflectionsConfig)
 
 
 class WebSearchConfig(Base):

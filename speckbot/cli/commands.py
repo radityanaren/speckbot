@@ -468,7 +468,6 @@ def gateway(
     from speckbot.cron.service import CronService
     from speckbot.cron.types import CronJob
     from speckbot.heartbeat.service import HeartbeatService
-    from speckbot.thoughts.service import ThoughtsService
     from speckbot.session.manager import SessionManager
 
     if verbose:
@@ -506,6 +505,9 @@ def gateway(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         hooks_config=config.detector.model_dump() if config.detector else None,
+        reflections_config=config.gateway.reflections.model_dump()
+        if config.gateway.reflections
+        else None,
     )
 
     # Set cron callback (needs agent)
@@ -618,29 +620,8 @@ def gateway(
         enabled=hb_cfg.enabled,
     )
 
-    # Thoughts service for continuous inner reflection
-    th_cfg = config.gateway.thoughts
-
-    async def on_thoughts_notify(response: str) -> None:
-        """Deliver a thought to the user's channel."""
-        from speckbot.bus.events import OutboundMessage
-
-        channel, chat_id = _pick_heartbeat_target()
-        if channel == "cli":
-            return
-        await bus.publish_outbound(
-            OutboundMessage(channel=channel, chat_id=chat_id, content=f"[Thought] {response}")
-        )
-
-    thoughts = ThoughtsService(
-        workspace=config.workspace_path,
-        provider=provider,
-        model=agent.model,
-        on_notify=on_thoughts_notify,
-        interval_seconds=th_cfg.interval_seconds,
-        max_messages=th_cfg.max_messages,
-        enabled=th_cfg.enabled,
-    )
+    # Reflections config
+    rf_cfg = config.gateway.reflections
 
     if channels.enabled_channels:
         console.print(f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")
@@ -653,9 +634,9 @@ def gateway(
 
     console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_seconds}s")
 
-    if th_cfg.enabled:
+    if rf_cfg.enabled:
         console.print(
-            f"[green]✓[/green] Thoughts: every {th_cfg.interval_seconds}s (last {th_cfg.max_messages} thoughts)"
+            f"[green]✓[/green] Reflections: after {rf_cfg.idle_seconds}s idle (max {rf_cfg.max_entries} entries)"
         )
 
     async def run():
@@ -701,8 +682,6 @@ def gateway(
         try:
             await cron.start()
             await heartbeat.start()
-            if th_cfg.enabled:
-                await thoughts.start()
             await asyncio.gather(
                 agent.run(),
                 channels.start_all(),
@@ -720,7 +699,6 @@ def gateway(
                 sleep_timer_task.cancel()
             await agent.close_mcp()
             heartbeat.stop()
-            thoughts.stop()
             cron.stop()
             agent.stop()
             await channels.stop_all()
