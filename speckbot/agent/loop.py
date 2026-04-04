@@ -726,13 +726,24 @@ class AgentLoop:
 
         self._last_monologue_time = time.time()
 
-        # Build context from recent session messages (more context for better monologue)
+        # Build context from recent session messages
         recent_msgs = session.messages[-20:]
+        logger.info(
+            "Monologue: session has {} messages, taking last {}",
+            len(session.messages),
+            len(recent_msgs),
+        )
+
         context_lines = []
-        for m in recent_msgs:
+        for i, m in enumerate(recent_msgs):
             role = m.get("role", "")
             content = m.get("content", "")
-            # Don't truncate - give LLM full context for better reflections
+            logger.info(
+                "Monologue msg[{}]: role='{}', content_len={}",
+                i,
+                role,
+                len(content) if content else 0,
+            )
             if content and role in ("user", "assistant"):
                 context_lines.append(f"[{role}]: {content}")
 
