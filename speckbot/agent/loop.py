@@ -724,6 +724,7 @@ class AgentLoop:
                 context_lines.append(f"[{role}]: {content}")
 
         context = "\n".join(context_lines[-10:]) if context_lines else "No recent context"
+        logger.debug("Monologue context (last {} messages):\n{}", len(context_lines), context)
 
         # Call LLM to monologue
         from speckbot.utils.helpers import current_time_str
@@ -735,7 +736,7 @@ class AgentLoop:
                 current_time=current_time_str(),
             )
         else:
-            user_prompt = f"""Reflect on the recent conversation.
+            user_prompt = f"""Based on the recent conversation below, provide a brief internal reflection about what just happened, what patterns you notice, or what you learned. Focus on the specific topics and interactions in this conversation.
 
 Recent conversation:
 {context}
@@ -743,7 +744,7 @@ Recent conversation:
 Current time: {current_time_str()}
 
 Decide what to do:
-- If it's worth noting as an internal journal entry → respond: JOURNAL: <your reflection>
+- If there's something worth noting as an internal journal entry → respond: JOURNAL: <your reflection>
 - If nothing noteworthy → respond: SKIP
 
 Be concise but insightful."""
