@@ -56,15 +56,13 @@ class ToolRegistry:
         if self._security and self._security.enabled:
             # First check for pending confirmation that was just confirmed
             if session_key:
-                confirm_result = self._security.check_confirmation_response(None, session_key)
-                if confirm_result.is_blocked:
-                    # User denied
-                    return f"Error: Tool '{name}' denied by user."
-                elif confirm_result.is_ask:
-                    # Still waiting - return the prompt
-                    prompt = confirm_result.reason or f"Confirm: {name}? [yes/no]"
-                    return f"Error: {prompt}"
-                # If ALLOW (confirmed), continue to execution
+                # Check if there's a pending confirmation for this session
+                if self._security.has_pending_confirmation(session_key):
+                    # There's still a pending prompt - user hasn't responded yet
+                    pending_prompt = self._security.get_pending_prompt(session_key)
+                    if pending_prompt:
+                        return f"Error: {pending_prompt}"
+                    # No pending = user already responded (either yes or no), let scan_tool handle it
 
             # Check if tool needs confirmation or should be blocked
             block_result = self._security.scan_tool(name, params, session_key)

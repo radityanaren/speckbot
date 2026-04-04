@@ -74,6 +74,9 @@ class AskDetector(DetectorBase):
         """
         self.ask_tools = ask_tools or []
         self._pending: dict[str, PendingConfirmation] = pending_confirmations or {}
+        # Track confirmed tools per session to avoid re-asking after confirmation
+        # Key: session_key, Value: set of tool names that were confirmed in this session
+        self._confirmed_tools: dict[str, set[str]] = {}
 
     def detect(self, text: str | None = None, context: str = "unknown", **kwargs) -> SecurityResult:
         """Check if tool requires confirmation or process response.
@@ -183,6 +186,24 @@ class AskDetector(DetectorBase):
             del self._pending[session_key]
             return True
         return False
+
+    def mark_confirmed(self, session_key: str, tool_name: str) -> None:
+        """Mark a tool as confirmed for a session to prevent re-asking."""
+        if session_key not in self._confirmed_tools:
+            self._confirmed_tools[session_key] = set()
+        self._confirmed_tools[session_key].add(tool_name)
+        logger.info(f"[Security] Marked {tool_name} as confirmed for session {session_key}")
+
+    def was_confirmed(self, session_key: str, tool_name: str) -> bool:
+        """Check if a tool was confirmed in this session."""
+        return (
+            session_key in self._confirmed_tools and tool_name in self._confirmed_tools[session_key]
+        )
+
+    def clear_confirmed(self, session_key: str) -> None:
+        """Clear confirmed tools for a session."""
+        if session_key in self._confirmed_tools:
+            del self._confirmed_tools[session_key]
 
     def load_pending_from_file(self, workspace: Path) -> None:
         """Load pending confirmations from file (survives session restart)."""

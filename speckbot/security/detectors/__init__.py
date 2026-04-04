@@ -106,6 +106,14 @@ class SecurityGateway:
 
         params = params or {}
 
+        # First check if tool was already confirmed in this session
+        # If so, skip ASK and execute directly (fixes confirmation loop)
+        if session_key and self.ask_detector.was_confirmed(session_key, tool_name):
+            logger.info(
+                f"[SecurityGateway] Tool '{tool_name}' already confirmed, allowing execution"
+            )
+            return SecurityResult(HookResult.ALLOW)
+
         # First check if tool needs confirmation (ASK)
         ask_result = self.ask_detector.check_tool(tool_name, params)
         if ask_result.is_ask:
@@ -183,6 +191,9 @@ class SecurityGateway:
         if response in ("yes", "y", "confirm", "ok", "sure", "go", "run"):
             # User confirmed - execute the tool
             logger.info(f"[SecurityGateway] User confirmed: {pending.tool_name}")
+
+            # Mark the tool as confirmed so it won't re-ask when re-executed
+            self.ask_detector.mark_confirmed(session_key, pending.tool_name)
 
             # Clear pending and return ALLOW with tool info
             self.ask_detector.clear_pending(session_key)

@@ -168,7 +168,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
                 return [
                     {"role": "system", "content": "Tool execution denied by user."},
                 ]
-            # If ALLOW (confirmed), continue - save state
+            # If ALLOW (confirmed), save state and continue
             security.save_state()
 
         # Scan user message for blocked content (if security enabled)
