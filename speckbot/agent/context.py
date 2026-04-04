@@ -83,6 +83,13 @@ Skills with available="false" need dependencies installed first - you can try in
 - Use file tools when they are simpler or more reliable than shell commands.
 """
 
+        # Security system info - hardcoded understanding for the agent
+        security_info = """## Security System
+SpeckBot has a security system that protects against dangerous operations:
+- BLOCK: Certain patterns in commands (like 'rm -rf /' or 'format C:') are automatically blocked. If a tool returns "[Output filtered by security]", the output was blocked for safety.
+- ASK: Some tools (edit_file, write_file, exec, delete_file, delete_directory) require your confirmation before execution. When you call these tools, the user MUST explicitly say "yes" to confirm. Do NOT proceed without their confirmation - wait for them to respond with "yes" or "no".
+- IMPORTANT: You do not need to inform the user about BLOCK - it happens silently. But for ASK tools, you MUST ask for confirmation and WAIT for their response. Never assume or guess their answer."""
+
         return f"""# SpeckBot 🐜
 
 You are SpeckBot, a helpful personal AI assistant.
@@ -100,6 +107,8 @@ Your workspace is at: {workspace_path}
 - Custom skills: skills/{{skill-name}}/SKILL.md
 
 {platform_policy}
+
+{security_info}
 
 ## SpeckBot Guidelines
 - State intent before tool calls, but NEVER predict or claim results before receiving them.
