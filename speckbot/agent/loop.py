@@ -309,6 +309,9 @@ class AgentLoop:
             try:
                 msg = await asyncio.wait_for(self.bus.consume_inbound(), timeout=1.0)
             except asyncio.TimeoutError:
+                # No message this second - check for monologue if enabled
+                if self._monologue_enabled:
+                    await self._check_monologue_idle()
                 continue
             except asyncio.CancelledError:
                 # Preserve real task cancellation so shutdown can complete cleanly.
@@ -558,14 +561,10 @@ class AgentLoop:
         self.sessions.save(session)
         self._schedule_background(self.memory_consolidator.maybe_consolidate_by_tokens(session))
 
-        # Update reflection tracking - user sent a message, so reset idle timer
+        # Update monologue tracking - user sent a message
         import time
 
         self._last_message_time = time.time()
-
-        # Check if we should trigger a monologue
-        if self._monologue_enabled:
-            await self._maybe_monologue(session, msg.channel, msg.chat_id)
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None
@@ -644,45 +643,72 @@ class AgentLoop:
         )
         return response.content if response else ""
 
-    async def _maybe_monologue(self, session: Session, channel: str, chat_id: str) -> None:
-        """Trigger monologue after idle time has passed."""
+    async def _check_monologue_idle(self) -> None:
+        """Check all sessions for idle time and trigger monologue if needed."""
         import time
 
-        # Don't monologue if recently did one
         now = time.time()
+
+        # Don't check too frequently (at least 10 seconds between checks)
+        if hasattr(self, "_last_monologue_check") and (now - self._last_monologue_check) < 10:
+            return
+        self._last_monologue_check = now
+
+        # Don't monologue if recently did one
         if (
             self._last_monologue_time
             and (now - self._last_monologue_time) < self._monologue_idle_seconds
         ):
             return
 
-        # Don't monologue if no messages in session
-        if not session.messages:
-            return
+        # Check all active sessions
+        for session_key, tasks in self._active_tasks.items():
+            # Only check sessions that have active tasks (meaning they're being used)
+            if not tasks:
+                continue
 
-        # Check if we've been idle long enough (no user messages recently)
-        last_msg_time = session.messages[-1].get("timestamp")
-        if not last_msg_time:
-            return
+            # Get session
+            session = self.sessions.get_or_create(session_key)
 
-        try:
-            last_msg_dt = datetime.fromisoformat(last_msg_time.replace("Z", "+00:00"))
-            idle_seconds = (
-                datetime.now().replace(tzinfo=last_msg_dt.tzinfo) - last_msg_dt
-            ).total_seconds()
-        except Exception:
-            return
+            if not session.messages:
+                continue
 
-        # Not enough idle time
-        if idle_seconds < self._monologue_idle_seconds:
-            return
+            # Get last message timestamp
+            last_msg = session.messages[-1]
+            last_msg_time = last_msg.get("timestamp")
+            if not last_msg_time:
+                continue
 
-        # Time to monologue!
-        logger.info("Triggering monologue for session {}", session.key)
-        self._last_monologue_time = now
+            try:
+                last_msg_dt = datetime.fromisoformat(last_msg_time.replace("Z", "+00:00"))
+                idle_seconds = (
+                    datetime.now().replace(tzinfo=last_msg_dt.tzinfo) - last_msg_dt
+                ).total_seconds()
+            except Exception:
+                continue
+
+            # If idle long enough, trigger monologue
+            if idle_seconds >= self._monologue_idle_seconds:
+                # Get channel and chat_id from session key
+                if ":" in session_key:
+                    channel, chat_id = session_key.split(":", 1)
+                else:
+                    channel, chat_id = "cli", session_key
+
+                logger.info(
+                    "Session {} idle for {}s, triggering monologue", session_key, idle_seconds
+                )
+                await self._trigger_monologue(session, channel, chat_id)
+                break  # Only one monologue at a time
+
+    async def _trigger_monologue(self, session: Session, channel: str, chat_id: str) -> None:
+        """Actually trigger the monologue and send to user."""
+        import time
+
+        self._last_monologue_time = time.time()
 
         # Build context from recent session messages
-        recent_msgs = session.messages[-20:]  # Last 20 messages
+        recent_msgs = session.messages[-20:]
         context_lines = []
         for m in recent_msgs:
             role = m.get("role", "")
