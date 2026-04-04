@@ -99,6 +99,7 @@ class AgentLoop:
             if monologue_config
             else 10
         )
+        self._monologue_prompt = monologue_config.get("prompt", "") if monologue_config else ""
         self._last_message_time: float | None = None
         self._last_monologue_time: float | None = None
         self._idle_timer_task: asyncio.Task | None = None  # Monologue timer task
@@ -728,7 +729,14 @@ class AgentLoop:
         # Call LLM to monologue
         from speckbot.utils.helpers import current_time_str
 
-        monologue_prompt = f"""You are SpeckBot's inner voice. Reflect on the recent conversation.
+        # Use custom prompt if provided, otherwise default
+        if self._monologue_prompt:
+            user_prompt = self._monologue_prompt.format(
+                context=context,
+                current_time=current_time_str(),
+            )
+        else:
+            user_prompt = f"""Reflect on the recent conversation.
 
 Recent conversation:
 {context}
@@ -741,14 +749,13 @@ Decide what to do:
 
 Be concise but insightful."""
 
+        system_prompt = "You are SpeckBot's inner voice. Be concise and insightful."
+
         try:
             response = await self.provider.chat_with_retry(
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "You are SpeckBot's inner voice. Be concise and insightful.",
-                    },
-                    {"role": "user", "content": monologue_prompt},
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 model=self.model,
             )
