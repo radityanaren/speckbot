@@ -654,15 +654,8 @@ class AgentLoop:
 
         now = time.time()
 
-        # Debug log
-        logger.debug(
-            "Checking monologue idle - enabled: {}, idle_seconds: {}",
-            self._monologue_enabled,
-            self._monologue_idle_seconds,
-        )
-
-        # Don't check too frequently (at least 10 seconds between checks)
-        if hasattr(self, "_last_monologue_check") and (now - self._last_monologue_check) < 10:
+        # Don't check too frequently (at least 30 seconds between checks)
+        if hasattr(self, "_last_monologue_check") and (now - self._last_monologue_check) < 30:
             return
         self._last_monologue_check = now
 
@@ -673,12 +666,22 @@ class AgentLoop:
         ):
             return
 
+        # Debug log
+        logger.info(
+            "MONOLOGUE CHECK: enabled={}, idle_threshold={}s, last_monologue={}",
+            self._monologue_enabled,
+            self._monologue_idle_seconds,
+            self._last_monologue_time,
+        )
+
         # Check all sessions (not just active tasks)
         session_keys = list(self.sessions._cache.keys())
-        logger.debug("Checking {} sessions for monologue", len(session_keys))
+        logger.info("MONOLOGUE: Checking {} sessions", len(session_keys))
 
         for session_key in session_keys:
             session = self.sessions.get_or_create(session_key)
+
+            logger.info("MONOLOGUE: Session {} has {} messages", session_key, len(session.messages))
 
             if not session.messages:
                 continue
@@ -686,6 +689,8 @@ class AgentLoop:
             # Get last message timestamp
             last_msg = session.messages[-1]
             last_msg_time = last_msg.get("timestamp")
+            logger.info("MONOLOGUE: Last msg time: {}", last_msg_time)
+
             if not last_msg_time:
                 continue
 
@@ -694,15 +699,15 @@ class AgentLoop:
                 idle_seconds = (
                     datetime.now().replace(tzinfo=last_msg_dt.tzinfo) - last_msg_dt
                 ).total_seconds()
-            except Exception:
+                logger.info(
+                    "MONOLOGUE: Session {} idle for {}s (threshold: {}s)",
+                    session_key,
+                    idle_seconds,
+                    self._monologue_idle_seconds,
+                )
+            except Exception as e:
+                logger.warning("MONOLOGUE: Failed to parse timestamp: {}", e)
                 continue
-
-            logger.debug(
-                "Session {} idle for {}s (threshold: {}s)",
-                session_key,
-                idle_seconds,
-                self._monologue_idle_seconds,
-            )
 
             # If idle long enough, trigger monologue
             if idle_seconds >= self._monologue_idle_seconds:
@@ -712,9 +717,7 @@ class AgentLoop:
                 else:
                     channel, chat_id = "cli", session_key
 
-                logger.info(
-                    "Session {} idle for {}s, triggering monologue", session_key, idle_seconds
-                )
+                logger.info("TRIGGERING MONOLOGUE for session {}", session_key)
                 await self._trigger_monologue(session, channel, chat_id)
                 break  # Only one monologue at a time
 
