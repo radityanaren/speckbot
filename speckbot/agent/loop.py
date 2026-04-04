@@ -721,59 +721,40 @@ class AgentLoop:
         await self._trigger_monologue(recent_session, channel, chat_id)
 
     async def _trigger_monologue(self, session: Session, channel: str, chat_id: str) -> None:
-        """Actually trigger the monologue and send to user."""
+        """Trigger monologue: user asks for reflection on session, LLM responds, write to journal and chat."""
         import time
+        from speckbot.utils.helpers import current_time_str
 
         self._last_monologue_time = time.time()
 
         # Build context from recent session messages
         recent_msgs = session.messages[-20:]
-        logger.info(
-            "Monologue: session has {} messages, taking last {}",
-            len(session.messages),
-            len(recent_msgs),
-        )
-
         context_lines = []
-        for i, m in enumerate(recent_msgs):
+        for m in recent_msgs:
             role = m.get("role", "")
             content = m.get("content", "")
-            logger.info(
-                "Monologue msg[{}]: role='{}', content_len={}",
-                i,
-                role,
-                len(content) if content else 0,
-            )
             if content and role in ("user", "assistant"):
                 context_lines.append(f"[{role}]: {content}")
 
         context = "\n".join(context_lines[-10:]) if context_lines else "No recent context"
-        logger.info("Monologue context ({} messages):\n{}", len(context_lines), context)
 
-        # Call LLM to monologue
-        from speckbot.utils.helpers import current_time_str
-
-        # Use custom prompt if provided, otherwise default
+        # Get prompt: custom from config or default fallback
         if self._monologue_prompt:
             user_prompt = self._monologue_prompt.format(
                 context=context,
                 current_time=current_time_str(),
             )
         else:
-            user_prompt = f"""Based on the recent conversation below, provide a brief internal reflection about what just happened, what patterns you notice, or what you learned. Focus on the specific topics and interactions in this conversation.
+            user_prompt = f"""Based on this recent conversation, provide a brief internal reflection about what happened, what patterns you notice, or what you learned.
 
 Recent conversation:
 {context}
 
 Current time: {current_time_str()}
 
-Decide what to do:
-- If there's something worth noting as an internal journal entry → respond: JOURNAL: <your reflection>
-- If nothing noteworthy → respond: SKIP
-
 Be concise but insightful."""
 
-        system_prompt = "You are SpeckBot's inner voice. Be concise and insightful."
+        system_prompt = "You are SpeckBot's inner voice. Reflect on the conversation and respond with your thoughts."
 
         try:
             response = await self.provider.chat_with_retry(
@@ -784,49 +765,21 @@ Be concise but insightful."""
                 model=self.model,
             )
 
-            content = (response.content or "").strip()
-            logger.info("Monologue LLM response: {}", content[:100] if content else "(empty)")
-
-            if content.upper().startswith("JOURNAL:"):
-                journal_entry = content[7:].strip()
-                if journal_entry:
-                    # Write to JOURNAL.md with auto-trim
-                    await self._write_journal(journal_entry)
-
-                    # Tell the user in the chat as a "thought" with markdown code block
-                    await self.bus.publish_outbound(
-                        OutboundMessage(
-                            channel=channel,
-                            chat_id=chat_id,
-                            content=f"💭\n```\n{journal_entry}\n```",
-                            progress_type="thought",
-                        )
-                    )
-                    logger.info("Monologue journaled: {}", journal_entry[:50])
-            elif content.upper().startswith("SKIP"):
-                # LLM decided nothing noteworthy - still send a marker to prove system works
+            reflection = (response.content or "").strip()
+            if reflection:
+                # Write to journal and send to chat
+                await self._write_journal(reflection)
                 await self.bus.publish_outbound(
                     OutboundMessage(
                         channel=channel,
                         chat_id=chat_id,
-                        content="💭\n```\n(thinking...)\n```",
+                        content=f"💭\n```\n{reflection}\n```",
                         progress_type="thought",
                     )
                 )
-                logger.info("Monologue skipped (no noteworthy reflection)")
+                logger.info("Monologue: journaled and sent ({})", reflection[:50])
             else:
-                # Unexpected response format - journal it and send to user (full content)
-                if content:
-                    await self._write_journal(content)
-                    await self.bus.publish_outbound(
-                        OutboundMessage(
-                            channel=channel,
-                            chat_id=chat_id,
-                            content=f"💭\n```\n{content}\n```",
-                            progress_type="thought",
-                        )
-                    )
-                    logger.info("Monologue journaled (non-standard): {}", content[:50])
+                logger.info("Monologue: empty response from LLM")
 
         except Exception as e:
             logger.error("Monologue failed: {}", e)
