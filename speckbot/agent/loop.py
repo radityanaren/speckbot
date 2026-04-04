@@ -327,9 +327,6 @@ class AgentLoop:
                 logger.warning("Error consuming inbound message: {}, continuing...", e)
                 continue
 
-            # Any message (user or monologue output) restarts the idle timer
-            self._restart_idle_timer()
-
             cmd = msg.content.strip().lower()
             if cmd == "/stop":
                 await self._handle_stop(msg)
@@ -371,7 +368,7 @@ class AgentLoop:
         os.execv(sys.executable, [sys.executable, "-m", "speckbot"] + sys.argv[1:])
 
     async def _dispatch(self, msg: InboundMessage) -> None:
-        """Process a message under the global lock."""
+        """Process a message under the global lock. Restart idle timer after saving to session."""
         async with self._processing_lock:
             try:
                 response = await self._process_message(msg)
@@ -399,6 +396,9 @@ class AgentLoop:
                         content="Sorry, I encountered an error.",
                     )
                 )
+            finally:
+                # Restart idle timer AFTER message is saved to session (in _process_message)
+                self._restart_idle_timer()
 
     async def close_mcp(self) -> None:
         """Drain pending background archives, then close MCP connections."""
