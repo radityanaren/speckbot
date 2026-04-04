@@ -661,13 +661,8 @@ class AgentLoop:
         ):
             return
 
-        # Check all active sessions
-        for session_key, tasks in self._active_tasks.items():
-            # Only check sessions that have active tasks (meaning they're being used)
-            if not tasks:
-                continue
-
-            # Get session
+        # Check all sessions (not just active tasks)
+        for session_key in list(self.sessions._cache.keys()):
             session = self.sessions.get_or_create(session_key)
 
             if not session.messages:
