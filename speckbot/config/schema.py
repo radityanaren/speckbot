@@ -188,16 +188,15 @@ class DetectorConfig(Base):
     block: dict[str, Any] = Field(
         default_factory=lambda: {
             "patterns": [
-                # Dangerous shell commands
-                r"rm\s+-rf\s+/",
-                r"rm\s+-rf\s+\.",
-                r"format\s+[a-z]:",
-                r"del\s+/f\s+/s\s+/q",
-                r"dd\s+if=",
-                r">\s*/dev/",
-                r"mkfs\.",
-                r"shutdown",
-                r"reboot",
+                # Dangerous shell commands (word boundary ensures false positives don't match file content)
+                r"\brm\s+-rf\s+[\/\.]",  # rm -rf / or rm -rf .
+                r"\bformat\s+[a-z]:",  # format C:
+                r"\bdel\s+/f\s+/s\s+/q",  # del /f /s /q
+                r"\bdd\s+if=",  # dd if=
+                r">\s*/dev/",  # > /dev/
+                r"\bmkfs\.",  # mkfs.*
+                r"\bshutdown\b",  # shutdown (with word boundary)
+                r"\breboot\b",  # reboot (with word boundary)
             ]
         }
     )

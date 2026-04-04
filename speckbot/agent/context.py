@@ -6,11 +6,14 @@ import platform
 from pathlib import Path
 from typing import Any
 
-from speckbot.utils.helpers import current_time_str
-
 from speckbot.agent.memory import MemoryStore
 from speckbot.agent.skills import SkillsLoader
-from speckbot.utils.helpers import build_assistant_message, detect_image_mime, detect_video_mime
+from speckbot.utils.helpers import (
+    build_assistant_message,
+    current_time_str,
+    detect_image_mime,
+    detect_video_mime,
+)
 
 
 class ContextBuilder:
@@ -86,8 +89,8 @@ Skills with available="false" need dependencies installed first - you can try in
         # Security system info - hardcoded understanding for the agent
         security_info = """## Security System
 SpeckBot has a security system that protects against dangerous operations:
-- BLOCK: Certain patterns in commands (like 'rm -rf /' or 'format C:') are automatically blocked. If a tool returns "[Output filtered by security]", the output was blocked for safety.
-- ASK: Some tools (edit_file, write_file, exec, delete_file, delete_directory) require your confirmation before execution. When you call these tools, the user MUST explicitly say "yes" to confirm. Do NOT proceed without their confirmation - wait for them to respond with "yes" or "no".
+- BLOCK: Certain patterns in commands are automatically blocked. If a tool returns "[Output filtered by security]", the output was blocked for safety.
+- ASK: Some tools require your confirmation before execution. When you call these tools, the user MUST explicitly say "yes" to confirm. Do NOT proceed without their confirmation - wait for them to respond with "yes" or "no".
 - IMPORTANT: You do not need to inform the user about BLOCK - it happens silently. But for ASK tools, you MUST ask for confirmation and WAIT for their response. Never assume or guess their answer."""
 
         return f"""# SpeckBot 🐜
