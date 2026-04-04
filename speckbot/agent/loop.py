@@ -101,6 +101,7 @@ class AgentLoop:
         )
         self._last_message_time: float | None = None
         self._last_monologue_time: float | None = None
+        self._idle_timer_task: asyncio.Task | None = None  # Monologue timer task
 
         # Create shared security service first
         from speckbot.agent.security import SecurityService
@@ -313,14 +314,8 @@ class AgentLoop:
 
         while self._running:
             try:
-                # Use idle_seconds as timeout - when timeout triggers, check for monologue
-                timeout = self._monologue_idle_seconds if self._monologue_enabled else 1.0
-                msg = await asyncio.wait_for(self.bus.consume_inbound(), timeout=timeout)
-            except asyncio.TimeoutError:
-                # Timeout reached - check if we should trigger monologue
-                if self._monologue_enabled:
-                    await self._trigger_monologue_if_idle()
-                continue
+                # Wait indefinitely for next message (timer handles monologue timing)
+                msg = await self.bus.consume_inbound()
             except asyncio.CancelledError:
                 # Preserve real task cancellation so shutdown can complete cleanly.
                 # Only ignore non-task CancelledError signals that may leak from integrations.
@@ -330,6 +325,9 @@ class AgentLoop:
             except Exception as e:
                 logger.warning("Error consuming inbound message: {}, continuing...", e)
                 continue
+
+            # Any message (user or monologue output) restarts the idle timer
+            self._restart_idle_timer()
 
             cmd = msg.content.strip().lower()
             if cmd == "/stop":
@@ -651,56 +649,62 @@ class AgentLoop:
         )
         return response.content if response else ""
 
-    async def _trigger_monologue_if_idle(self) -> None:
-        """Check current session's last message time and trigger monologue if idle."""
-        logger.info("Monologue timeout reached - checking idle time...")
+    def _restart_idle_timer(self) -> None:
+        """Restart the idle timer - cancels existing timer and starts a new one."""
+        if not self._monologue_enabled:
+            return
 
+        # Cancel existing timer if any
+        if self._idle_timer_task and not self._idle_timer_task.done():
+            self._idle_timer_task.cancel()
+            # Don't wait - just let it be cancelled asynchronously
+
+        # Start new timer task
+        self._idle_timer_task = asyncio.create_task(self._idle_timer_task_run())
+
+    async def _idle_timer_task_run(self) -> None:
+        """The idle timer task - waits for idle_seconds then triggers monologue."""
+        try:
+            await asyncio.sleep(self._monologue_idle_seconds)
+            # Timer fired - trigger monologue
+            await self._trigger_monologue_if_idle()
+            # After monologue (or if skipped), restart timer to keep the cycle going
+            if self._monologue_enabled and self._running:
+                self._restart_idle_timer()
+        except asyncio.CancelledError:
+            # Timer was cancelled (user sent a message) - that's expected, do nothing
+            pass
+
+    async def _trigger_monologue_if_idle(self) -> None:
+        """Trigger monologue for the most recent session.
+
+        Called when idle timer fires - we already know we've been idle for idle_seconds,
+        so no need to check session timestamps.
+        """
         # Only check the session that's currently active (most recent)
         if not self.sessions._cache:
-            logger.info("No sessions in cache")
             return
 
         # Get the most recently updated session
         recent_session = None
-        recent_time = None
         recent_key = None
         for key, session in self.sessions._cache.items():
             if session.messages:
-                msg_time = session.messages[-1].get("timestamp")
-                if msg_time:
-                    try:
-                        dt = datetime.fromisoformat(msg_time.replace("Z", "+00:00"))
-                        if recent_time is None or dt > recent_time:
-                            recent_time = dt
-                            recent_session = session
-                            recent_key = key
-                    except Exception:
-                        continue
+                recent_session = session
+                recent_key = key
+                break  # Take first one (they're ordered by last access)
 
-        if not recent_session or not recent_time:
-            logger.info("No session with timestamp found")
+        if not recent_session:
             return
 
-        # Check idle time
-        now = datetime.now().replace(tzinfo=recent_time.tzinfo)
-        idle_seconds = (now - recent_time).total_seconds()
+        # Get channel and chat_id from session key
+        if recent_key and ":" in recent_key:
+            channel, chat_id = recent_key.split(":", 1)
+        else:
+            channel, chat_id = "cli", recent_key or "default"
 
-        logger.info(
-            "Session {} idle for {}s (threshold: {}s)",
-            recent_key,
-            idle_seconds,
-            self._monologue_idle_seconds,
-        )
-
-        if idle_seconds >= self._monologue_idle_seconds:
-            # Get channel and chat_id from session key
-            if ":" in recent_key:
-                channel, chat_id = recent_key.split(":", 1)
-            else:
-                channel, chat_id = "cli", recent_key
-
-            logger.info("Triggering monologue for session {}", recent_key)
-            await self._trigger_monologue(recent_session, channel, chat_id)
+        logger.info("Triggering monologue for session {}", recent_key)
+        await self._trigger_monologue(recent_session, channel, chat_id)
 
     async def _trigger_monologue(self, session: Session, channel: str, chat_id: str) -> None:
         """Actually trigger the monologue and send to user."""
