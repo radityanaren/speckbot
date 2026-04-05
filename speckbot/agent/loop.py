@@ -662,7 +662,8 @@ class AgentLoop:
             current = journal_file.read_text(encoding="utf-8") or ""
 
         timestamp = current_time_str().split(",")[0]
-        new_entry = f"- [{timestamp}] {entry}\n"
+        # Wrap in markdown code block with cloud emoji
+        new_entry = f"- [{timestamp}] ☁️\n```markdown\n{entry}\n```\n"
 
         if current:
             updated = current.rstrip() + "\n" + new_entry
@@ -717,7 +718,7 @@ class AgentLoop:
 
             # Inject prompt as inbound message - processed by agent within the session
             # Add short preamble so agent knows it's from system, not user
-            full_prompt = f"[This is system prompt, NOT from user, this answer would not get shown into the user] {self._monologue_prompt}"
+            full_prompt = f"[This is inner monologue, it is NOT from the user, and NOT regular chat] {self._monologue_prompt}"
             msg = InboundMessage(
                 channel=channel,
                 sender_id="user",
