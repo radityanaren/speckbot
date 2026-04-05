@@ -836,32 +836,8 @@ Recent conversation to reflect on:
             )
             logger.info("Monologue: sent to chat")
 
-            # Phase 4: Agent re-reads monologue and decides if it NEEDS TOOLS
-            needs_tools = await self._analyze_monologue_needs_tools(reflection)
-
-            if needs_tools:
-                logger.info(
-                    "Monologue: agent decided it needs tools, triggering normal permission flow"
-                )
-                session_key = f"{channel}:{chat_id}"
-                self._pending_monologue_action[session_key] = reflection
-
-                # Inject a message that triggers normal permission flow (PLAN MODE)
-                action_msg = InboundMessage(
-                    channel="system",
-                    sender_id="system",
-                    chat_id=chat_id,
-                    content=reflection,
-                    metadata={
-                        "message_id": f"monologue_action_{int(time.time())}",
-                        "is_monologue_action": True,
-                    },
-                )
-                # Process through normal agent flow - this will ask permission, show plan, etc.
-                response = await self._process_message(action_msg)
-                logger.info("Monologue: action flow completed")
-            else:
-                logger.info("Monologue: agent decided no tools needed, just thinking")
+            # DONE - no Phase 4 tool decision flow
+            # If user wants to take action, they can ask normally
 
         except Exception as e:
             logger.error("Monologue failed: {}", e)
