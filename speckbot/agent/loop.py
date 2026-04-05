@@ -730,28 +730,28 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
     async def _trigger_monologue(self, channel: str, chat_id: str, prompt: str) -> None:
         """Inject monologue prompt into session, always journal + send to chat, then analyze for actions."""
         import time
-        from speckbot.bus.events import InboundMessage
 
         self._last_monologue_time = time.time()
-
-        # Phase 1: Get reflection through full agent loop
-        msg = InboundMessage(
-            channel="system",  # Must be "system" to bypass normal chat processing
-            sender_id="system",
-            chat_id=chat_id,
-            content=prompt,
-            metadata={"message_id": f"monologue_{int(time.time())}", "is_monologue": True},
-        )
 
         logger.info("Monologue: triggering inner thought in session {}:{}", channel, chat_id)
 
         try:
-            response = await self._process_message(msg)
-            if not response or not response.content:
+            # Phase 1: Get reflection - use direct LLM call, DON'T save to session
+            reflection_response = await self.provider.chat_with_retry(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are SpeckBot's inner voice. Reflect on the conversation and respond with your thoughts.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                model=self.model,
+            )
+
+            reflection = (reflection_response.content or "").strip()
+            if not reflection:
                 logger.info("Monologue: no response")
                 return
-
-            reflection = response.content.strip()
 
             # Phase 2: ALWAYS journal + send to chat first
             await self._write_journal(reflection)
