@@ -103,6 +103,9 @@ class AgentLoop:
         self._last_message_time: float | None = None
         self._last_monologue_time: float | None = None
         self._idle_timer_task: asyncio.Task | None = None  # Monologue timer task
+        
+        # Track pending monologue actions (channel:chat_id -> reflection text)
+        self._pending_monologue_action: dict[str, str] = {}
 
         # Create shared security service first
         from speckbot.agent.security import SecurityService
@@ -469,6 +472,30 @@ class AgentLoop:
         key = session_key or msg.session_key
         session = self.sessions.get_or_create(key)
 
+        # Check for pending monologue action confirmation
+        if key in self._pending_monologue_action:
+            cmd = msg.content.strip().lower()
+            if cmd in ("yes", "y", "confirm", "go ahead"):
+                pending_reflection = self._pending_monologue_action.pop(key)
+                logger.info("Monologue: user confirmed action, executing reflection...")
+                # Re-inject the reflection as a normal user message to execute it
+                msg = InboundMessage(
+                    channel=msg.channel,
+                    sender_id="user",
+                    chat_id=msg.chat_id,
+                    content=pending_reflection,
+                    metadata=msg.metadata,
+                )
+                logger.info("Monologue: re-injecting reflection for execution")
+            elif cmd in ("no", "n", "cancel", "skip"):
+                self._pending_monologue_action.pop(key)
+                logger.info("Monologue: user declined action")
+                return OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content="Understood, I'll skip that action.",
+                )
+
         # Slash commands
         cmd = msg.content.strip().lower()
         if cmd == "/new":
@@ -728,7 +755,13 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
         await self._trigger_monologue(channel, chat_id, prompt)
 
     async def _trigger_monologue(self, channel: str, chat_id: str, prompt: str) -> None:
-        """Trigger monologue: inject into session, journal it, then decide if actionable."""
+        """Trigger monologue flow:
+        1. Get reflection (inject into session)
+        2. Journal + Chat IMMEDIATELY (no permission)
+        3. Analyze if needs tools
+        4. If yes â†’ ask permission, then execute on confirm
+        5. If no â†’ done
+        """
         import time
         from speckbot.bus.events import InboundMessage
 
@@ -753,11 +786,13 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
                 return
 
             reflection = response.content.strip()
+            logger.info("Monologue: got reflection: {}", reflection[:100])
 
-            # Phase 2: Journal the reflection
+            # Phase 2: Journal the reflection INSTANTLY (no permission)
             await self._write_journal(reflection)
+            logger.info("Monologue: journaled")
             
-            # Phase 3: Send to chat
+            # Phase 3: Send to chat INSTANTLY (no permission)
             wrapped = f"ðŸ’­\n```\n{reflection}\n```"
             await self.bus.publish_outbound(
                 OutboundMessage(
@@ -767,55 +802,55 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
                     progress_type="thought",
                 )
             )
-            logger.info("Monologue: journaled and sent to chat")
+            logger.info("Monologue: sent to chat")
 
-            # Phase 4: Analyze if actionable (separate LLM call, don't save)
-            is_actionable = await self._analyze_monologue_decision(reflection)
+            # Phase 4: Agent re-reads monologue and decides if it NEEDS TOOLS
+            needs_tools = await self._analyze_monologue_needs_tools(reflection)
 
-            if is_actionable:
-                logger.info("Monologue: decision is actionable, awaiting user confirmation")
+            if needs_tools:
+                logger.info("Monologue: agent decided it needs tools, asking user for permission")
+                session_key = f"{channel}:{chat_id}"
+                self._pending_monologue_action[session_key] = reflection
+                
                 await self.bus.publish_outbound(
                     OutboundMessage(
                         channel=channel,
                         chat_id=chat_id,
-                        content="ðŸ’­ I'm thinking of taking an action. Confirm? (yes/no)",
+                        content="I want to take an action. Do you give permission? (yes/no)",
                         progress_type="thought",
                     )
                 )
             else:
-                logger.info("Monologue: decision is reflective only")
+                logger.info("Monologue: agent decided no tools needed, just thinking")
 
         except Exception as e:
             logger.error("Monologue failed: {}", e)
 
-    async def _analyze_monologue_decision(self, reflection: str) -> bool:
-        """Phase 3: Use structured tool call to decide if monologue requires action.
+    async def _analyze_monologue_needs_tools(self, reflection: str) -> bool:
+        """Agent re-reads its monologue and decides: does this need tools/actions?
         
-        Similar to heartbeat routing, asks: is this reflective only, or does it need execution?
-        Returns True if user should confirm, False if just reflection.
+        Returns True if agent should use tools, False if just thinking.
         """
-        from speckbot.utils.helpers import current_time_str
-
         monologue_decision_tool = [
             {
                 "type": "function",
                 "function": {
                     "name": "monologue_decision",
-                    "description": "Decide if this inner monologue is actionable or just reflective.",
+                    "description": "Decide if your monologue requires tool use to execute.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "decision": {
+                            "needs_tools": {
                                 "type": "string",
-                                "enum": ["reflective", "action"],
-                                "description": "reflective = just thinking/philosophy, action = needs to do something",
+                                "enum": ["yes", "no"],
+                                "description": "yes = this requires me to use tools/take action, no = this is just thinking/reflection",
                             },
                             "reason": {
                                 "type": "string",
-                                "description": "Brief reason for the decision",
+                                "description": "Why you need tools (or why you don't)",
                             },
                         },
-                        "required": ["decision"],
+                        "required": ["needs_tools"],
                     },
                 },
             }
@@ -825,11 +860,11 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
             messages=[
                 {
                     "role": "system",
-                    "content": "You are analyzing your own inner monologue. Decide: is this just reflection, or does it imply you need to take action?",
+                    "content": "You just had an inner monologue. Now re-read it and decide: do I need to use tools to execute this, or is it just thinking?",
                 },
                 {
                     "role": "user",
-                    "content": f"My inner thought:\n{reflection}\n\nIs this reflective only, or do I need to act?",
+                    "content": f"My monologue was:\n\n{reflection}",
                 },
             ],
             tools=monologue_decision_tool,
@@ -837,15 +872,15 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
         )
 
         if not response.has_tool_calls:
-            logger.info("Monologue analysis: no decision tool called, treating as reflective")
+            logger.info("Monologue needs_tools: no decision tool called, defaulting to no")
             return False
 
         args = response.tool_calls[0].arguments
-        decision = args.get("decision", "reflective")
+        needs_tools = args.get("needs_tools", "no")
         reason = args.get("reason", "")
 
-        logger.info("Monologue analysis: {} ({})", decision, reason)
-        return decision == "action"
+        logger.info("Monologue needs_tools: {} ({})", needs_tools, reason)
+        return needs_tools == "yes"
 
     async def _write_journal(self, entry: str) -> None:
         """Write a journal entry to JOURNAL.md with auto-trim."""
