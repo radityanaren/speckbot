@@ -728,33 +728,36 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
         await self._trigger_monologue(channel, chat_id, prompt)
 
     async def _trigger_monologue(self, channel: str, chat_id: str, prompt: str) -> None:
-        """Inject monologue prompt into session, always journal + send to chat, then analyze for actions."""
+        """Trigger monologue: inject into session, journal it, then decide if actionable."""
         import time
+        from speckbot.bus.events import InboundMessage
 
         self._last_monologue_time = time.time()
 
-        logger.info("Monologue: triggering inner thought in session {}:{}", channel, chat_id)
+        # Create system message for the same session
+        msg = InboundMessage(
+            channel="system",
+            sender_id="system",
+            chat_id=chat_id,
+            content=prompt,
+            metadata={"message_id": f"monologue_{int(time.time())}", "is_monologue": True},
+        )
+
+        logger.info("Monologue: injecting into session {}", channel)
 
         try:
-            # Phase 1: Get reflection - use direct LLM call, DON'T save to session
-            reflection_response = await self.provider.chat_with_retry(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are SpeckBot's inner voice. Reflect on the conversation and respond with your thoughts.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                model=self.model,
-            )
-
-            reflection = (reflection_response.content or "").strip()
-            if not reflection:
+            # Phase 1: Process through normal agent loop (saves to session)
+            response = await self._process_message(msg)
+            if not response or not response.content:
                 logger.info("Monologue: no response")
                 return
 
-            # Phase 2: ALWAYS journal + send to chat first
+            reflection = response.content.strip()
+
+            # Phase 2: Journal the reflection
             await self._write_journal(reflection)
+            
+            # Phase 3: Send to chat
             wrapped = f"ðŸ’­\n```\n{reflection}\n```"
             await self.bus.publish_outbound(
                 OutboundMessage(
@@ -764,14 +767,13 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
                     progress_type="thought",
                 )
             )
-            logger.info("Monologue: journaled and sent to chat ({})", reflection[:50])
+            logger.info("Monologue: journaled and sent to chat")
 
-            # Phase 3: Analyze if actionable (using structured decision like heartbeat)
+            # Phase 4: Analyze if actionable (separate LLM call, don't save)
             is_actionable = await self._analyze_monologue_decision(reflection)
 
             if is_actionable:
-                logger.info("Monologue: decision is actionable, requires user confirmation...")
-                # Send ASK confirmation to user before executing
+                logger.info("Monologue: decision is actionable, awaiting user confirmation")
                 await self.bus.publish_outbound(
                     OutboundMessage(
                         channel=channel,
@@ -780,9 +782,8 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
                         progress_type="thought",
                     )
                 )
-                logger.info("Monologue: awaiting user confirmation for action")
             else:
-                logger.info("Monologue: decision is reflective only, no action needed")
+                logger.info("Monologue: decision is reflective only")
 
         except Exception as e:
             logger.error("Monologue failed: {}", e)
