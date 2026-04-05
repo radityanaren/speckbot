@@ -736,7 +736,7 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
 
         # Phase 1: Get reflection through full agent loop
         msg = InboundMessage(
-            channel=channel,
+            channel="system",  # Must be "system" to bypass normal chat processing
             sender_id="system",
             chat_id=chat_id,
             content=prompt,
