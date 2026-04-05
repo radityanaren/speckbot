@@ -88,24 +88,12 @@ class AgentLoop:
         self._monologue_enabled = (
             monologue_config.get("enabled", False) if monologue_config else False
         )
-        # Try both idle_seconds and idleSeconds
         self._monologue_idle_seconds = (
             (monologue_config.get("idle_seconds") or monologue_config.get("idleSeconds") or 300)
             if monologue_config
             else 300
         )
-        self._monologue_max_entries = (
-            (monologue_config.get("max_entries") or monologue_config.get("maxEntries") or 10)
-            if monologue_config
-            else 10
-        )
-        self._monologue_prompt = monologue_config.get("prompt", "") if monologue_config else ""
-        self._last_message_time: float | None = None
-        self._last_monologue_time: float | None = None
-        self._idle_timer_task: asyncio.Task | None = None  # Monologue timer task
-
-        # Track pending monologue actions (channel:chat_id -> reflection text)
-        self._pending_monologue_action: dict[str, str] = {}
+        self._idle_timer_task: asyncio.Task | None = None  # Idle timer task
 
         # Create shared security service first
         from speckbot.agent.security import SecurityService
@@ -441,27 +429,9 @@ class AgentLoop:
             logger.info("Processing system message from {}", msg.sender_id)
             key = f"{channel}:{chat_id}"
             session = self.sessions.get_or_create(key)
-            await self.memory_consolidator.maybe_consolidate_by_tokens(session)
-            self._set_tool_context(channel, chat_id, msg.metadata.get("message_id"))
-            # Get full conversation history for monologue
-            history = session.get_history(max_messages=50)
-            logger.info("Monologue: got {} history messages", len(history))
 
-            # Log the history for debugging - show actual content
-            for i, h in enumerate(history[:3]):
-                content = h.get("content", "")[:100]
-                logger.info(
-                    "Monologue history[{}]: role={}, content='{}'",
-                    i,
-                    h.get("role"),
-                    content,
-                )
-
-            # Subagent results should be assistant role, other system messages use user role
             # Subagent results should be assistant role, other system messages use user role
             current_role = "assistant" if msg.sender_id == "subagent" else "user"
-            # Bypass security for monologue to prevent confirmation flow issues
-            skip_security = msg.metadata.get("skip_security", False)
             messages = self.context.build_messages(
                 history=history,
                 current_message=msg.content,
@@ -469,7 +439,6 @@ class AgentLoop:
                 chat_id=chat_id,
                 current_role=current_role,
                 session_key=msg.session_key,
-                skip_security=skip_security,
             )
             final_content, _, all_msgs = await self._run_agent_loop(
                 messages, session_key=msg.session_key
@@ -612,11 +581,6 @@ class AgentLoop:
         self.sessions.save(session)
         self._schedule_background(self.memory_consolidator.maybe_consolidate_by_tokens(session))
 
-        # Update monologue tracking - user sent a message
-        import time
-
-        self._last_message_time = time.time()
-
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None
 
@@ -720,7 +684,7 @@ class AgentLoop:
             # Timer was cancelled (user sent a message) - that's expected, do nothing
             pass
 
-    async def _trigger_monologue_if_idle(self) -> None:
+        # Monologue functionality removed - timer still runs but does nothing
         """Trigger monologue for the most recent session by injecting a timed prompt."""
         if not self.sessions._cache:
             logger.info("Monologue: no sessions in cache")

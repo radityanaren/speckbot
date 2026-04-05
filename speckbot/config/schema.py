@@ -88,8 +88,6 @@ class MonologueConfig(Base):
 
     enabled: bool = False
     idle_seconds: int = 300  # Reflect after X seconds of idle
-    max_entries: int = 10  # Keep last N journal entries
-    prompt: str = ""  # Custom prompt for monologue (leave empty for default)
 
 
 class GatewayConfig(Base):
