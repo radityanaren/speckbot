@@ -836,8 +836,26 @@ Recent conversation to reflect on:
             )
             logger.info("Monologue: sent to chat")
 
-            # DONE - no Phase 4 tool decision flow
-            # If user wants to take action, they can ask normally
+            # Phase 4: Ask the agent - looking back at your monologue, do you need to take actions?
+            # Inject into SAME session, no security bypass needed
+            phase4_msg = InboundMessage(
+                channel="system",
+                sender_id="system",
+                chat_id=chat_id,
+                content=f"Looking back at your monologue:\n\n{reflection}\n\nDo you need to take any actions based on this reflection? If yes, tell me what you want to do. If no, just say no.",
+                metadata={"message_id": f"monologue_phase4_{int(time.time())}"},
+            )
+            phase4_response = await self._process_message(phase4_msg)
+            if phase4_response and phase4_response.content:
+                # Send the phase 4 response as regular chat (not as 💭)
+                await self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=channel,
+                        chat_id=chat_id,
+                        content=phase4_response.content,
+                    )
+                )
+                logger.info("Monologue Phase 4: response sent")
 
         except Exception as e:
             logger.error("Monologue failed: {}", e)
