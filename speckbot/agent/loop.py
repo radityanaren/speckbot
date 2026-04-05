@@ -696,11 +696,13 @@ class AgentLoop:
                 channel, chat_id = "cli", recent_key or "default"
 
             # Inject prompt as inbound message - processed by agent within the session
+            # Add short preamble so agent knows it's from system, not user
+            full_prompt = f"[Inner prompt] {self._monologue_prompt}"
             msg = InboundMessage(
                 channel=channel,
                 sender_id="user",
                 chat_id=chat_id,
-                content=self._monologue_prompt,
+                content=full_prompt,
                 metadata={"is_idle_prompt": True},
             )
             logger.info("Idle: injecting prompt into session {}", recent_key)
