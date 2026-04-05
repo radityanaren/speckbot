@@ -756,7 +756,7 @@ class AgentLoop:
         else:
             channel, chat_id = "cli", recent_key or "default"
 
-        logger.info("Monologue: using channel={}, chat_id={}", channel, chat_id)
+        logger.info("Monologue: using session_key={}", recent_key)
 
         # Get reflection prompt (custom or default)
         if self._monologue_prompt:
@@ -796,15 +796,17 @@ Recent conversation to reflect on:
         self._last_monologue_time = time.time()
 
         # Create system message for the same session
+        # IMPORTANT: Use full session key (channel:chat_id) so _process_message parses correctly
+        session_key = f"{channel}:{chat_id}"
         msg = InboundMessage(
             channel="system",
             sender_id="system",
-            chat_id=chat_id,
+            chat_id=session_key,  # Full session key like "telegram:909980820"
             content=prompt,
             metadata={
                 "message_id": f"monologue_{int(time.time())}",
                 "is_monologue": True,
-                "skip_security": True,  # Bypass security for monologue
+                "skip_security": True,
             },
         )
 
@@ -841,7 +843,7 @@ Recent conversation to reflect on:
             phase4_msg = InboundMessage(
                 channel="system",
                 sender_id="system",
-                chat_id=chat_id,
+                chat_id=session_key,  # Use full session key like "telegram:909980820"
                 content=f"Looking back at your monologue:\n\n{reflection}\n\nDo you need to take any actions based on this reflection? If yes, tell me what you want to do. If no, just say no.",
                 metadata={"message_id": f"monologue_phase4_{int(time.time())}"},
             )
