@@ -93,6 +93,11 @@ class AgentLoop:
             if monologue_config
             else 300
         )
+        self._monologue_prompt = (
+            monologue_config.get("prompt", "Hey, been a while — what are you working on?")
+            if monologue_config
+            else "Hey, been a while — what are you working on?"
+        )
         self._idle_timer_task: asyncio.Task | None = None  # Idle timer task
 
         # Create shared security service first
@@ -458,30 +463,6 @@ class AgentLoop:
         key = session_key or msg.session_key
         session = self.sessions.get_or_create(key)
 
-        # Check for pending monologue action confirmation
-        if key in self._pending_monologue_action:
-            cmd = msg.content.strip().lower()
-            if cmd in ("yes", "y", "confirm", "go ahead"):
-                pending_reflection = self._pending_monologue_action.pop(key)
-                logger.info("Monologue: user confirmed action, executing reflection...")
-                # Re-inject the reflection as a normal user message to execute it
-                msg = InboundMessage(
-                    channel=msg.channel,
-                    sender_id="user",
-                    chat_id=msg.chat_id,
-                    content=pending_reflection,
-                    metadata=msg.metadata,
-                )
-                logger.info("Monologue: re-injecting reflection for execution")
-            elif cmd in ("no", "n", "cancel", "skip"):
-                self._pending_monologue_action.pop(key)
-                logger.info("Monologue: user declined action")
-                return OutboundMessage(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                    content="Understood, I'll skip that action.",
-                )
-
         # Slash commands
         cmd = msg.content.strip().lower()
         if cmd == "/new":
@@ -672,253 +653,58 @@ class AgentLoop:
         self._idle_timer_task = asyncio.create_task(self._idle_timer_task_run())
 
     async def _idle_timer_task_run(self) -> None:
-        """The idle timer task - waits for idle_seconds then triggers monologue."""
+        """The idle timer task - waits for idle_seconds then sends prompt to active session."""
+        task = asyncio.current_task()
+
         try:
             await asyncio.sleep(self._monologue_idle_seconds)
-            # Timer fired - trigger monologue
-            await self._trigger_monologue_if_idle()
-            # After monologue (or if skipped), restart timer to keep the cycle going
-            if self._monologue_enabled and self._running:
-                self._restart_idle_timer()
-        except asyncio.CancelledError:
-            # Timer was cancelled (user sent a message) - that's expected, do nothing
-            pass
 
-        # Monologue functionality removed - timer still runs but does nothing
-        """Trigger monologue for the most recent session by injecting a timed prompt."""
-        if not self.sessions._cache:
-            logger.info("Monologue: no sessions in cache")
-            return
-
-        # Get the most recently updated session (by updated_at)
-        recent_session = None
-        recent_key = None
-        latest_update = None
-        for key, session in self.sessions._cache.items():
-            if session.messages:
-                if latest_update is None or (
-                    session.updated_at and session.updated_at > latest_update
-                ):
-                    latest_update = session.updated_at
-                    recent_session = session
-                    recent_key = key
-
-        if not recent_session:
-            logger.info("Monologue: no session with messages found")
-            return
-
-        logger.info(
-            "Monologue: injecting into session {} (updated at: {}, {} messages)",
-            recent_key,
-            latest_update,
-            len(recent_session.messages),
-        )
-
-        # Get channel and chat_id from session key
-        if recent_key and ":" in recent_key:
-            channel, chat_id = recent_key.split(":", 1)
-        else:
-            channel, chat_id = "cli", recent_key or "default"
-
-        logger.info("Monologue: using session_key={}", recent_key)
-
-        # Get reflection prompt (custom or default)
-        if self._monologue_prompt:
-            reflection_prompt = self._monologue_prompt
-        else:
-            reflection_prompt = "Look at the recent conversation history below and share your thoughts about what happened, what you noticed, or any ideas that came to mind."
-
-        # Fixed inner voice instruction + user prompt
-        prompt = f"""You are in INNER MONOLOGUE mode - this is your private internal thinking, not a conversation.
-
-Generate a thoughtful, self-contained reflection (2-3 sentences minimum) about the recent conversation. This should be YOUR genuine thoughts, not a question or response to anyone.
-
-IMPORTANT:
-- You are NOT required to take ANY action
-- You are NOT required to write anything to files  
-- Your response will be automatically shown to the user as a 💭 thought
-- Do NOT ask questions in your response - just share your thoughts
-- Do NOT say "yes" or "no" - just reflect
-
-Recent conversation to reflect on:
-{reflection_prompt}"""
-
-        # Inject as a system message to preserve full agent context
-        await self._trigger_monologue(channel, chat_id, prompt)
-
-    async def _trigger_monologue(self, channel: str, chat_id: str, prompt: str) -> None:
-        """Trigger monologue flow:
-        1. Get reflection (inject into session)
-        2. Journal + Chat IMMEDIATELY (no permission)
-        3. Analyze if needs tools
-        4. If yes → ask permission, then execute on confirm
-        5. If no → done
-        """
-        import time
-        from speckbot.bus.events import InboundMessage
-
-        self._last_monologue_time = time.time()
-
-        # Create system message for the same session
-        # IMPORTANT: Use full session key (channel:chat_id) so _process_message parses correctly
-        session_key = f"{channel}:{chat_id}"
-        msg = InboundMessage(
-            channel="system",
-            sender_id="system",
-            chat_id=session_key,  # Full session key like "telegram:909980820"
-            content=prompt,
-            metadata={
-                "message_id": f"monologue_{int(time.time())}",
-                "is_monologue": True,
-                "skip_security": True,
-            },
-        )
-
-        logger.info("Monologue: injecting into session {}", channel)
-
-        try:
-            # Phase 1: Process through normal agent loop (saves to session)
-            response = await self._process_message(msg)
-            if not response or not response.content:
-                logger.info("Monologue: no response")
+            # Only run if still enabled and running
+            if not self._monologue_enabled or not self._running:
                 return
 
-            reflection = response.content.strip()
-            logger.info("Monologue: got reflection: {}", reflection[:100])
+            # Find most recent active session
+            if not self.sessions._cache:
+                logger.debug("Idle timer: no sessions")
+                return
 
-            # Phase 2: Journal the reflection INSTANTLY (no permission)
-            await self._write_journal(reflection)
-            logger.info("Monologue: journaled")
+            recent_session = None
+            recent_key = None
+            latest_update = None
+            for key, session in self.sessions._cache.items():
+                if session.messages:
+                    if latest_update is None or (
+                        session.updated_at and session.updated_at > latest_update
+                    ):
+                        latest_update = session.updated_at
+                        recent_session = session
+                        recent_key = key
 
-            # Phase 3: Send to chat INSTANTLY (no permission)
-            wrapped = f"💭\n```\n{reflection}\n```"
+            if not recent_session:
+                logger.debug("Idle timer: no session with messages")
+                return
+
+            # Parse channel and chat_id from session key
+            if recent_key and ":" in recent_key:
+                channel, chat_id = recent_key.split(":", 1)
+            else:
+                channel, chat_id = "cli", recent_key or "default"
+
+            # Send the prompt directly to the channel
             await self.bus.publish_outbound(
                 OutboundMessage(
                     channel=channel,
                     chat_id=chat_id,
-                    content=wrapped,
-                    progress_type="thought",
+                    content=self._monologue_prompt,
                 )
             )
-            logger.info("Monologue: sent to chat")
+            logger.info("Idle: sent prompt to {}", recent_key)
 
-            # Phase 4: Ask the agent - looking back at your monologue, do you need to take actions?
-            # Inject into SAME session, no security bypass needed
-            phase4_msg = InboundMessage(
-                channel="system",
-                sender_id="system",
-                chat_id=session_key,  # Use full session key like "telegram:909980820"
-                content=f"Looking back at your monologue:\n\n{reflection}\n\nDo you need to take any actions based on this reflection? If yes, tell me what you want to do. If no, just say no.",
-                metadata={"message_id": f"monologue_phase4_{int(time.time())}"},
-            )
-            phase4_response = await self._process_message(phase4_msg)
-            if phase4_response and phase4_response.content:
-                # Send the phase 4 response as regular chat (not as 💭)
-                await self.bus.publish_outbound(
-                    OutboundMessage(
-                        channel=channel,
-                        chat_id=chat_id,
-                        content=phase4_response.content,
-                    )
-                )
-                logger.info("Monologue Phase 4: response sent")
-
-        except Exception as e:
-            logger.error("Monologue failed: {}", e)
-
-    async def _analyze_monologue_needs_tools(self, reflection: str) -> bool:
-        """Agent re-reads its monologue and decides: does this need tools/actions?
-
-        Returns True if agent should use tools, False if just thinking.
-        """
-        monologue_decision_tool = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "monologue_decision",
-                    "description": "Decide if your monologue requires tool use to execute.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "needs_tools": {
-                                "type": "string",
-                                "enum": ["yes", "no"],
-                                "description": "yes = this requires me to use tools/take action, no = this is just thinking/reflection",
-                            },
-                            "reason": {
-                                "type": "string",
-                                "description": "Why you need tools (or why you don't)",
-                            },
-                        },
-                        "required": ["needs_tools"],
-                    },
-                },
-            }
-        ]
-
-        response = await self.provider.chat_with_retry(
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You just had an inner monologue. Now re-read it and decide: do I need to use tools to execute this, or is it just thinking?",
-                },
-                {
-                    "role": "user",
-                    "content": f"My monologue was:\n\n{reflection}",
-                },
-            ],
-            tools=monologue_decision_tool,
-            model=self.model,
-        )
-
-        if not response.has_tool_calls:
-            logger.info("Monologue needs_tools: no decision tool called, defaulting to no")
-            return False
-
-        args = response.tool_calls[0].arguments
-        needs_tools = args.get("needs_tools", "no")
-        reason = args.get("reason", "")
-
-        logger.info("Monologue needs_tools: {} ({})", needs_tools, reason)
-        return needs_tools == "yes"
-
-    async def _write_journal(self, entry: str) -> None:
-        """Write a journal entry to JOURNAL.md with auto-trim."""
-        from datetime import datetime
-
-        from speckbot.utils.helpers import current_time_str
-
-        journal_file = self.workspace / "JOURNAL.md"
-        current = ""
-        if journal_file.exists():
-            current = journal_file.read_text(encoding="utf-8") or ""
-
-        # Build new entry
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        timestamp = current_time_str().split(",")[0]
-        new_entry = f"\n## {date_str}\n- [{timestamp}] {entry}\n"
-
-        # Append to existing
-        if current:
-            if not current.rstrip().endswith("\n"):
-                new_entry = "\n" + new_entry
-            updated = current + new_entry
+        except asyncio.CancelledError:
+            # Timer was cancelled (user sent a message) - that's expected, do nothing
+            # Don't restart - user action already restarted via _restart_idle_timer()
+            pass
         else:
-            updated = f"# Journal\n{new_entry}"
-
-        # Trim to keep last N entries
-        lines = updated.split("\n")
-        entry_count = sum(1 for line in lines if line.strip().startswith("- ["))
-        if entry_count > self._monologue_max_entries:
-            # Keep only last N entries
-            keep_lines = []
-            found_entries = 0
-            for line in reversed(lines):
-                if line.strip().startswith("- ["):
-                    found_entries += 1
-                    if found_entries > self._monologue_max_entries:
-                        continue
-                keep_lines.insert(0, line)
-            updated = "\n".join(keep_lines)
-
-        journal_file.write_text(updated, encoding="utf-8")
+            # Only restart timer if task completed normally (not cancelled)
+            if self._monologue_enabled and self._running:
+                self._restart_idle_timer()

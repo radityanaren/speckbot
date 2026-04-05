@@ -635,9 +635,7 @@ def gateway(
     console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_seconds}s")
 
     if mono_cfg.enabled:
-        console.print(
-            f"[green]✓[/green] Monologue: after {mono_cfg.idle_seconds}s idle (max {mono_cfg.max_entries} entries)"
-        )
+        console.print(f"[green]✓[/green] Idle prompt: after {mono_cfg.idle_seconds}s idle")
 
     async def run():
         # Run Dream (memory cleanup) on startup

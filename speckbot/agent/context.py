@@ -165,7 +165,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         # Use shared security service if available
         security = self.security
 
-        # Check for pending confirmation response first (skip if monologue)
+        # Check for pending confirmation response first
         if not skip_security and security and security.enabled and session_key and current_message:
             confirm_result = security.check_confirmation_response(current_message, session_key)
             if confirm_result.is_ask:
@@ -187,7 +187,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
             # If ALLOW (confirmed), save state and continue
             security.save_state()
 
-        # Scan user message for blocked content (skip if monologue)
+        # Scan user message for blocked content
         if not skip_security and security and security.enabled:
             block_result = security.scan_input(current_message)
             if block_result.is_blocked:

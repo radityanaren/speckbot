@@ -84,10 +84,11 @@ class HeartbeatConfig(Base):
 
 
 class MonologueConfig(Base):
-    """Monologue system - time-triggered inner thinking inside agent loop."""
+    """Monologue system - time-triggered prompt to active session."""
 
     enabled: bool = False
-    idle_seconds: int = 300  # Reflect after X seconds of idle
+    idle_seconds: int = 300  # Time in seconds before triggering
+    prompt: str = "Hey, been a while — what are you working on?"  # Message to send
 
 
 class GatewayConfig(Base):
