@@ -716,8 +716,8 @@ class AgentLoop:
                 channel, chat_id = "cli", recent_key or "default"
 
             # Inject prompt as inbound message - processed by agent within the session
-            # Inner monologue: agent responds as their own thoughts, auto-journaled
-            full_prompt = f"[Inner thought] {self._monologue_prompt}"
+            # Inner monologue: agent responds as their own thoughts, journaling is auto-handled
+            full_prompt = f"[Inner thought] {self._monologue_prompt} (auto-journaled)"
             msg = InboundMessage(
                 channel=channel,
                 sender_id="user",
