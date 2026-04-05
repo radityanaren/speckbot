@@ -662,8 +662,7 @@ class AgentLoop:
             current = journal_file.read_text(encoding="utf-8") or ""
 
         timestamp = current_time_str().split(",")[0]
-        # Wrap in markdown code block with cloud emoji
-        new_entry = f"- [{timestamp}] ☁️\n```markdown\n{entry}\n```\n"
+        new_entry = f"- [{timestamp}] {entry}\n"
 
         if current:
             updated = current.rstrip() + "\n" + new_entry
@@ -735,6 +734,9 @@ class AgentLoop:
             # Write to journal BEFORE sending to user (bypasses security)
             if response and response.content:
                 await self._write_journal(response.content)
+                # Wrap response for user bubble with cloud emoji and markdown
+                wrapped_content = f"☁️\n```\n{response.content}\n```"
+                response.content = wrapped_content
                 # Then publish to bus (sends to Telegram)
                 await self.bus.publish_outbound(response)
                 logger.info("Idle: journaled and sent response to {}", recent_key)
