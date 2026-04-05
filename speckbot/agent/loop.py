@@ -756,6 +756,13 @@ You are permitted to make file changes, run shell commands, and utilize your ars
                 has_action_tag = "<ACTION>" in response.content
                 clean_content = response.content.replace("<ACTION>", "").strip()
 
+                # Also remove any system-reminder tags from the output
+                clean_content = (
+                    clean_content.replace("<system-reminder>", "")
+                    .replace("</system-reminder>", "")
+                    .strip()
+                )
+
                 await self._write_journal(clean_content)
 
                 if has_action_tag:
