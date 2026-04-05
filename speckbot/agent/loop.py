@@ -447,13 +447,14 @@ class AgentLoop:
             history = session.get_history(max_messages=50)
             logger.info("Monologue: got {} history messages", len(history))
 
-            # Log the history for debugging
-            for i, h in enumerate(history[:5]):
+            # Log the history for debugging - show actual content
+            for i, h in enumerate(history[:3]):
+                content = h.get("content", "")[:100]
                 logger.info(
-                    "Monologue history[{}]: role={}, content_len={}",
+                    "Monologue history[{}]: role={}, content='{}'",
                     i,
                     h.get("role"),
-                    len(h.get("content", "")),
+                    content,
                 )
 
             # Subagent results should be assistant role, other system messages use user role
