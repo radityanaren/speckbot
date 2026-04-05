@@ -728,9 +728,8 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
         await self._trigger_monologue(channel, chat_id, prompt)
 
     async def _trigger_monologue(self, channel: str, chat_id: str, prompt: str) -> None:
-        """Inject monologue prompt into session and process through normal agent loop."""
+        """Inject monologue prompt into session, analyze, and execute if actionable."""
         import time
-
         from speckbot.bus.events import InboundMessage
 
         self._last_monologue_time = time.time()
@@ -747,12 +746,64 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
         logger.info("Monologue: triggering inner thought in session {}:{}", channel, chat_id)
 
         try:
+            # Phase 1: Get initial reflection
             response = await self._process_message(msg)
-            if response and response.content:
-                text = response.content.strip()
+            if not response or not response.content:
+                logger.info("Monologue: no response")
+                return
 
-                # Wrap response in ``` format and send as thought
-                wrapped = f"ðŸ’­\n```\n{text}\n```"
+            reflection = response.content.strip()
+
+            # Phase 2: Analyze if actionable
+            is_actionable = await self._is_monologue_actionable(reflection)
+
+            if is_actionable:
+                logger.info("Monologue: reflection is actionable, executing with tools...")
+                # Phase 3a: Re-inject for execution
+                action_msg = InboundMessage(
+                    channel=channel,
+                    sender_id="system",
+                    chat_id=chat_id,
+                    content=reflection,
+                    metadata={
+                        "message_id": f"monologue_action_{int(time.time())}",
+                        "is_monologue": True,
+                        "monologue_action": True,
+                    },
+                )
+                action_response = await self._process_message(action_msg)
+                action_result = action_response.content.strip() if action_response else ""
+
+                # Log as action
+                if action_result:
+                    journal_entry = f"[Action] {reflection}\n\nResult: {action_result}"
+                    await self._write_journal(journal_entry)
+                    # Send action result to chat
+                    await self.bus.publish_outbound(
+                        OutboundMessage(
+                            channel=channel,
+                            chat_id=chat_id,
+                            content=f"ðŸ’­ *Action*\n```\n{action_result}\n```",
+                            progress_type="thought",
+                        )
+                    )
+                    logger.info("Monologue: action executed and journaled")
+                else:
+                    # Fallback: just journal reflection
+                    await self._write_journal(reflection)
+                    await self.bus.publish_outbound(
+                        OutboundMessage(
+                            channel=channel,
+                            chat_id=chat_id,
+                            content=f"ðŸ’­\n```\n{reflection}\n```",
+                            progress_type="thought",
+                        )
+                    )
+            else:
+                logger.info("Monologue: reflection is philosophical, journaling only...")
+                # Phase 3b: Just journal
+                await self._write_journal(reflection)
+                wrapped = f"ðŸ’­\n```\n{reflection}\n```"
                 await self.bus.publish_outbound(
                     OutboundMessage(
                         channel=channel,
@@ -761,13 +812,52 @@ You are currently in your inner thoughts. Respond with your genuine inner voiceâ
                         progress_type="thought",
                     )
                 )
-                # Also write to journal
-                await self._write_journal(text)
-                logger.info("Monologue: inner thought journaled ({})", text[:50])
-            else:
-                logger.info("Monologue: no response")
+                logger.info("Monologue: philosophical thought journaled ({})", reflection[:50])
+
         except Exception as e:
             logger.error("Monologue failed: {}", e)
+
+    async def _is_monologue_actionable(self, text: str) -> bool:
+        """Determine if monologue reflection is actionable (implies tool usage)."""
+        import re
+
+        # Keywords that indicate actionable intent
+        actionable_keywords = [
+            r"\bshould\b",
+            r"\bneed to\b",
+            r"\blet me\b",
+            r"\bi'll\b",
+            r"\bi should\b",
+            r"\bI'll search",
+            r"\bI'll write",
+            r"\bI'll check",
+            r"\bI'll read",
+            r"\bI'll create",
+            r"\bI'll look",
+            r"\bI'll open",
+            r"\bI'll organize",
+            r"\bI'll update",
+            r"\bI'll modify",
+            r"\bI'll delete",
+            r"\bI'll save",
+            r"\bfind\b",
+            r"\bsearch\b",
+            r"\bwrite\b",
+            r"\bfetch\b",
+            r"\bfetch\b",
+            r"\bcreate\b",
+        ]
+
+        text_lower = text.lower()
+
+        # Quick heuristic check
+        for keyword in actionable_keywords:
+            if re.search(keyword, text_lower):
+                logger.info("Monologue: actionable keyword detected: {}", keyword)
+                return True
+
+        logger.info("Monologue: no actionable keywords detected")
+        return False
 
     async def _write_journal(self, entry: str) -> None:
         """Write a journal entry to JOURNAL.md with auto-trim."""
