@@ -716,8 +716,14 @@ class AgentLoop:
                 channel, chat_id = "cli", recent_key or "default"
 
             # Inject prompt as inbound message - processed by agent within the session
-            # Add short preamble so agent knows it's from system, not user
-            full_prompt = f"[This is inner monologue, it is NOT from the user, and NOT regular chat] {self._monologue_prompt}"
+            # Add explicit preamble so agent knows it's inner monologue/journaling trigger
+            full_prompt = f"""[SYSTEM TRIGGER - INNER MONOLOGUE]
+This is NOT a user message. This is an internal trigger to prompt reflection.
+Your response will be auto-journaled (not shown to user in normal chat flow).
+Respond with genuine inner thoughts, reflections, and observations.
+Be contemplative and authentic - this is for your own processing, not conversation.
+
+Prompt: {self._monologue_prompt}"""
             msg = InboundMessage(
                 channel=channel,
                 sender_id="user",
