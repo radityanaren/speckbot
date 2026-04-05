@@ -722,7 +722,7 @@ This is a private system trigger NOT from the user. Your response will be auto-j
 - Do NOT send this to the user
 - Do NOT use any tools
 - Do NOT ask questions or offer help
-- Answer COMPACTLY but CONCISELY
+- Answer TRUTHFULLY and SIMPLE, do not over complicate
 
 Just do this : {self._monologue_prompt}"""
             msg = InboundMessage(
