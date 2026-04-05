@@ -653,7 +653,7 @@ class AgentLoop:
         self._idle_timer_task = asyncio.create_task(self._idle_timer_task_run())
 
     async def _idle_timer_task_run(self) -> None:
-        """The idle timer task - waits for idle_seconds then sends prompt to active session."""
+        """The idle timer task - waits for idle_seconds then sends prompt to agent."""
         task = asyncio.current_task()
 
         try:
@@ -661,6 +661,11 @@ class AgentLoop:
 
             # Only run if still enabled and running
             if not self._monologue_enabled or not self._running:
+                return
+
+            # Skip if prompt is empty
+            if not self._monologue_prompt or not self._monologue_prompt.strip():
+                logger.debug("Idle timer: prompt is empty, skipping")
                 return
 
             # Find most recent active session
@@ -690,15 +695,20 @@ class AgentLoop:
             else:
                 channel, chat_id = "cli", recent_key or "default"
 
-            # Send the prompt directly to the channel
-            await self.bus.publish_outbound(
-                OutboundMessage(
-                    channel=channel,
-                    chat_id=chat_id,
-                    content=self._monologue_prompt,
-                )
+            # Inject prompt as inbound message - processed by agent within the session
+            msg = InboundMessage(
+                channel=channel,
+                sender_id="user",
+                chat_id=chat_id,
+                content=self._monologue_prompt,
+                metadata={"is_idle_prompt": True},
             )
-            logger.info("Idle: sent prompt to {}", recent_key)
+            logger.info("Idle: injecting prompt into session {}", recent_key)
+
+            # Process through agent - response will be sent automatically
+            # Use session_key so it processes in the same session context
+            response = await self._process_message(msg, session_key=recent_key)
+            logger.info("Idle: agent responded to prompt in {}", recent_key)
 
         except asyncio.CancelledError:
             # Timer was cancelled (user sent a message) - that's expected, do nothing
