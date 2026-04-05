@@ -758,19 +758,21 @@ class AgentLoop:
         if self._monologue_prompt:
             reflection_prompt = self._monologue_prompt
         else:
-            reflection_prompt = "What are your thoughts on what we just discussed?"
+            reflection_prompt = "Look at the recent conversation history below and share your thoughts about what happened, what you noticed, or any ideas that came to mind."
 
         # Fixed inner voice instruction + user prompt
-        prompt = f"""You are in INNER MONOLOGUE mode. Think to yourself only.
+        prompt = f"""You are in INNER MONOLOGUE mode - this is your private internal thinking, not a conversation.
+
+Generate a thoughtful, self-contained reflection (2-3 sentences minimum) about the recent conversation. This should be YOUR genuine thoughts, not a question or response to anyone.
 
 IMPORTANT:
-- You are NOT having a conversation
 - You are NOT required to take ANY action
-- You are NOT required to write anything to files
-- Simply reflect and share your raw thoughts
-- Do NOT mention journaling, writing to files, or taking actions in your response
+- You are NOT required to write anything to files  
 - Your response will be automatically shown to the user as a 💭 thought
+- Do NOT ask questions in your response - just share your thoughts
+- Do NOT say "yes" or "no" - just reflect
 
+Recent conversation to reflect on:
 {reflection_prompt}"""
 
         # Inject as a system message to preserve full agent context
