@@ -459,6 +459,8 @@ class AgentLoop:
             # Subagent results should be assistant role, other system messages use user role
             # Subagent results should be assistant role, other system messages use user role
             current_role = "assistant" if msg.sender_id == "subagent" else "user"
+            # Bypass security for monologue to prevent confirmation flow issues
+            skip_security = msg.metadata.get("skip_security", False)
             messages = self.context.build_messages(
                 history=history,
                 current_message=msg.content,
@@ -466,6 +468,7 @@ class AgentLoop:
                 chat_id=chat_id,
                 current_role=current_role,
                 session_key=msg.session_key,
+                skip_security=skip_security,
             )
             final_content, _, all_msgs = await self._run_agent_loop(
                 messages, session_key=msg.session_key
@@ -797,7 +800,11 @@ Recent conversation to reflect on:
             sender_id="system",
             chat_id=chat_id,
             content=prompt,
-            metadata={"message_id": f"monologue_{int(time.time())}", "is_monologue": True},
+            metadata={
+                "message_id": f"monologue_{int(time.time())}",
+                "is_monologue": True,
+                "skip_security": True,  # Bypass security for monologue
+            },
         )
 
         logger.info("Monologue: injecting into session {}", channel)
