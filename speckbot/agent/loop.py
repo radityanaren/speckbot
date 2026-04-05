@@ -103,7 +103,7 @@ class AgentLoop:
         self._last_message_time: float | None = None
         self._last_monologue_time: float | None = None
         self._idle_timer_task: asyncio.Task | None = None  # Monologue timer task
-        
+
         # Track pending monologue actions (channel:chat_id -> reflection text)
         self._pending_monologue_action: dict[str, str] = {}
 
@@ -793,7 +793,7 @@ Do NOT ask for permissions. Do NOT try to write files or take actions. Just shar
             # Phase 2: Journal the reflection INSTANTLY (no permission)
             await self._write_journal(reflection)
             logger.info("Monologue: journaled")
-            
+
             # Phase 3: Send to chat INSTANTLY (no permission)
             wrapped = f"💭\n```\n{reflection}\n```"
             await self.bus.publish_outbound(
@@ -810,18 +810,26 @@ Do NOT ask for permissions. Do NOT try to write files or take actions. Just shar
             needs_tools = await self._analyze_monologue_needs_tools(reflection)
 
             if needs_tools:
-                logger.info("Monologue: agent decided it needs tools, asking user for permission")
+                logger.info(
+                    "Monologue: agent decided it needs tools, triggering normal permission flow"
+                )
                 session_key = f"{channel}:{chat_id}"
                 self._pending_monologue_action[session_key] = reflection
-                
-                await self.bus.publish_outbound(
-                    OutboundMessage(
-                        channel=channel,
-                        chat_id=chat_id,
-                        content="I want to take an action. Do you give permission? (yes/no)",
-                        progress_type="thought",
-                    )
+
+                # Inject a message that triggers normal permission flow (PLAN MODE)
+                action_msg = InboundMessage(
+                    channel="system",
+                    sender_id="system",
+                    chat_id=chat_id,
+                    content=reflection,
+                    metadata={
+                        "message_id": f"monologue_action_{int(time.time())}",
+                        "is_monologue_action": True,
+                    },
                 )
+                # Process through normal agent flow - this will ask permission, show plan, etc.
+                response = await self._process_message(action_msg)
+                logger.info("Monologue: action flow completed")
             else:
                 logger.info("Monologue: agent decided no tools needed, just thinking")
 
@@ -830,7 +838,7 @@ Do NOT ask for permissions. Do NOT try to write files or take actions. Just shar
 
     async def _analyze_monologue_needs_tools(self, reflection: str) -> bool:
         """Agent re-reads its monologue and decides: does this need tools/actions?
-        
+
         Returns True if agent should use tools, False if just thinking.
         """
         monologue_decision_tool = [
