@@ -729,14 +729,21 @@ Your operational mode has changed from plan to build.
 You are no longer in read-only mode.
 You are permitted to make file changes, run shell commands, and utilize your arsenal of tools as needed.
 </system-reminder>"""
+            # Use session_key to ensure response goes to correct channel
             msg = InboundMessage(
                 channel=channel,
                 sender_id="user",
                 chat_id=chat_id,
                 content=full_prompt,
                 metadata={"is_idle_prompt": True},
+                session_key_override=recent_key,
             )
-            logger.info("Idle: injecting prompt into session {}", recent_key)
+            logger.info(
+                "Idle: injecting prompt into session {} (channel={}, chat_id={})",
+                recent_key,
+                channel,
+                chat_id,
+            )
 
             # Process through agent - response will be sent automatically
             # Use session_key so it processes in the same session context
