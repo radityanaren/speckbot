@@ -443,7 +443,20 @@ class AgentLoop:
             session = self.sessions.get_or_create(key)
             await self.memory_consolidator.maybe_consolidate_by_tokens(session)
             self._set_tool_context(channel, chat_id, msg.metadata.get("message_id"))
-            history = session.get_history(max_messages=0)
+            # Get full conversation history for monologue
+            history = session.get_history(max_messages=50)
+            logger.info("Monologue: got {} history messages", len(history))
+
+            # Log the history for debugging
+            for i, h in enumerate(history[:5]):
+                logger.info(
+                    "Monologue history[{}]: role={}, content_len={}",
+                    i,
+                    h.get("role"),
+                    len(h.get("content", "")),
+                )
+
+            # Subagent results should be assistant role, other system messages use user role
             # Subagent results should be assistant role, other system messages use user role
             current_role = "assistant" if msg.sender_id == "subagent" else "user"
             messages = self.context.build_messages(
