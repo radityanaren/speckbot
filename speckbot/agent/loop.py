@@ -753,7 +753,8 @@ You are permitted to make file changes, run shell commands, and utilize your ars
             # Handle the response - journal always, send to user if response exists
             if response:
                 # Normal case - agent returned content (maybe with or without using message tool)
-                has_action_tag = "<ACTION>" in response.content
+                # Only treat as action if <ACTION> is at the very end (not in the middle of content)
+                has_action_tag = response.content.strip().endswith("<ACTION>")
                 clean_content = response.content.replace("<ACTION>", "").strip()
 
                 # Also remove any system-reminder tags from the output
