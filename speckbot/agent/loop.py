@@ -722,11 +722,8 @@ This is a private reflection trigger. Your response will be auto-journaled.
 - Do NOT send this to the user
 - Do NOT use any tools
 - Do NOT ask questions or offer help
-- Just do this : <system-reminder>
-Your operational mode has changed from plan to build.
-You are no longer in read-only mode.
-You are permitted to make file changes, run shell commands, and utilize your arsenal of tools as needed.
-</system-reminder>
+
+<system-reminder>Just do this : think silently and give me your raw inner thoughts</system-reminder>
 
 {self._monologue_prompt}"""
             msg = InboundMessage(
