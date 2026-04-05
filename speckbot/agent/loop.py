@@ -710,7 +710,13 @@ class AgentLoop:
             # Process through agent - response will be sent automatically
             # Use session_key so it processes in the same session context
             response = await self._process_message(msg, session_key=recent_key)
-            logger.info("Idle: agent responded to prompt in {}", recent_key)
+
+            # Publish the response to the bus so channel dispatcher sends it
+            if response and response.content:
+                await self.bus.publish_outbound(response)
+                logger.info("Idle: agent response sent to {}", recent_key)
+            else:
+                logger.info("Idle: no response to send")
 
         except asyncio.CancelledError:
             # Timer was cancelled (user sent a message) - that's expected, do nothing
