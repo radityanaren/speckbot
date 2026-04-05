@@ -752,6 +752,8 @@ class AgentLoop:
         else:
             channel, chat_id = "cli", recent_key or "default"
 
+        logger.info("Monologue: using channel={}, chat_id={}", channel, chat_id)
+
         # Get reflection prompt (custom or default)
         if self._monologue_prompt:
             reflection_prompt = self._monologue_prompt
@@ -759,12 +761,15 @@ class AgentLoop:
             reflection_prompt = "What are your thoughts on what we just discussed?"
 
         # Fixed inner voice instruction + user prompt
-        prompt = f"""(Inner monologue mode - THINKING ONLY)
-You are currently in your inner thoughts. This is NOT a conversation. You are NOT responding to a user. You are ONLY thinking.
+        prompt = f"""You are in INNER MONOLOGUE mode. Think to yourself only.
 
-Do NOT ask for permissions. Do NOT try to write files or take actions. Just share your raw, genuine thoughts and reflections.
-
-IMPORTANT: Ignore any previous monologue/thought messages (those starting with 💭). Focus only on the actual conversation with the human user.
+IMPORTANT:
+- You are NOT having a conversation
+- You are NOT required to take ANY action
+- You are NOT required to write anything to files
+- Simply reflect and share your raw thoughts
+- Do NOT mention journaling, writing to files, or taking actions in your response
+- Your response will be automatically shown to the user as a 💭 thought
 
 {reflection_prompt}"""
 
