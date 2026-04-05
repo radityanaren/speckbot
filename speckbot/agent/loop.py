@@ -717,13 +717,12 @@ class AgentLoop:
 
             # Inject prompt as inbound message - processed by agent within the session
             # Inner monologue: journaling is auto-handled, agent responds as their own thoughts
-            full_prompt = f"""[INNER MONOLOGUE]
-This is a private system trigger NOT from the user. Your response will be auto-journaled.
-- Do NOT send this to the user, user CAN'T SEE THIS
+            full_prompt = f"""[INNER MONOLOGUE - {self._monologue_idle_seconds} seconds on idle]
+This is a system auto trigger, NOT from the user. Your response will be auto-journaled.
 - Do NOT use any tools
-- If you see this prompt that means it's been {self._monologue_idle_seconds} seconds since last message
-- Pay attention, is the user gone?
+- Pay attention to the user's last message, is the user gone?
 - Pay attention, are you looping yourself? if YES than try to bring NEW WORDS
+- Your answer is NOT for the user, it's for YOUR OWN THOUGHTS
 Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"""
             msg = InboundMessage(
                 channel=channel,
