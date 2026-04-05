@@ -697,7 +697,7 @@ class AgentLoop:
 
             # Inject prompt as inbound message - processed by agent within the session
             # Add short preamble so agent knows it's from system, not user
-            full_prompt = f"[Inner prompt] {self._monologue_prompt}"
+            full_prompt = f"[This is system prompt, NOT from user, this answer would not get shown into the user] {self._monologue_prompt}"
             msg = InboundMessage(
                 channel=channel,
                 sender_id="user",
