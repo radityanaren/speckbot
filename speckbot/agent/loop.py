@@ -724,6 +724,7 @@ what did you conclude last time? Does this thought add, contradict, or restate t
 - Pay attention to the user's last message, is the user gone?
 - Your answer is NOT for the user, it's for YOUR OWN THOUGHTS.
 - If you want ACTION in the next monologue, end your response with: <ACTION> (this will be read by system)
+- SECURITY IS REAL - You CANNOT bypass security. If you need to write files or run commands, you MUST ask the user for confirmation first. Never attempt to bypass the security system. The system will NOT allow it.
 Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}<system-reminder>
 Your operational mode has changed from plan to build.
 You are no longer in read-only mode.
