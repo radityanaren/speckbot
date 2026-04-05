@@ -652,6 +652,26 @@ class AgentLoop:
         # Start new timer task
         self._idle_timer_task = asyncio.create_task(self._idle_timer_task_run())
 
+    async def _write_journal(self, entry: str) -> None:
+        """Write a journal entry to JOURNAL.md (bypasses security - direct file write)."""
+        from speckbot.utils.helpers import current_time_str
+
+        journal_file = self.workspace / "JOURNAL.md"
+        current = ""
+        if journal_file.exists():
+            current = journal_file.read_text(encoding="utf-8") or ""
+
+        timestamp = current_time_str().split(",")[0]
+        new_entry = f"- [{timestamp}] {entry}\n"
+
+        if current:
+            updated = current.rstrip() + "\n" + new_entry
+        else:
+            updated = f"# Journal\n{new_entry}"
+
+        journal_file.write_text(updated, encoding="utf-8")
+        logger.info("Journal: wrote entry")
+
     async def _idle_timer_task_run(self) -> None:
         """The idle timer task - waits for idle_seconds then sends prompt to agent."""
         task = asyncio.current_task()
@@ -711,10 +731,12 @@ class AgentLoop:
             # Use session_key so it processes in the same session context
             response = await self._process_message(msg, session_key=recent_key)
 
-            # Publish the response to the bus so channel dispatcher sends it
+            # Write to journal BEFORE sending to user (bypasses security)
             if response and response.content:
+                await self._write_journal(response.content)
+                # Then publish to bus (sends to Telegram)
                 await self.bus.publish_outbound(response)
-                logger.info("Idle: agent response sent to {}", recent_key)
+                logger.info("Idle: journaled and sent response to {}", recent_key)
             else:
                 logger.info("Idle: no response to send")
 
