@@ -760,21 +760,15 @@ You are permitted to make file changes, run shell commands, and utilize your ars
                 await self._write_journal(clean_content)
 
                 if has_action_tag:
-                    # Action mode - plain message, no wrap, but still send to user
-                    response.content = clean_content  # Remove ACTION tag
+                    # Action mode - plain message, no wrap
+                    response.content = clean_content
                     await self.bus.publish_outbound(response)
                     logger.info("Idle: journaled and sent action to {}", recent_key)
                 else:
-                    # Reflection mode - ALWAYS wrap in ☁️ bubble (even if message tool was used)
-                    # We explicitly create a new OutboundMessage to ensure it goes to the right channel
+                    # Reflection mode - wrap in ☁️ bubble
                     wrapped_content = f"☁️\n```\n{clean_content}\n```"
-                    outbound = OutboundMessage(
-                        channel=msg.channel,
-                        chat_id=msg.chat_id,
-                        content=wrapped_content,
-                        metadata=msg.metadata or {},
-                    )
-                    await self.bus.publish_outbound(outbound)
+                    response.content = wrapped_content
+                    await self.bus.publish_outbound(response)
                     logger.info("Idle: journaled and sent thought to {}", recent_key)
             else:
                 logger.info("Idle: no response to send")
