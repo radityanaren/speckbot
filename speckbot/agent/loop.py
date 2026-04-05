@@ -712,11 +712,17 @@ class AgentLoop:
         else:
             channel, chat_id = "cli", recent_key or "default"
 
-        # Get monologue prompt (custom or default)
+        # Get reflection prompt (custom or default)
         if self._monologue_prompt:
-            prompt = self._monologue_prompt
+            reflection_prompt = self._monologue_prompt
         else:
-            prompt = "[Internal monologue] Briefly reflect on what we discussed. 4-5 sentences max."
+            reflection_prompt = "What are your thoughts on what we just discussed?"
+
+        # Fixed inner voice instruction + user prompt
+        prompt = f"""(Inner monologue mode)
+You are currently in your inner thoughts. Respond with your genuine inner voice—your real reflections, observations, and feelings. This is not a response to a user; this is YOU thinking.
+
+{reflection_prompt}"""
 
         # Inject as a system message to preserve full agent context
         await self._trigger_monologue(channel, chat_id, prompt)
@@ -738,15 +744,12 @@ class AgentLoop:
             metadata={"message_id": f"monologue_{int(time.time())}", "is_monologue": True},
         )
 
-        logger.info("Monologue: injecting inner thought into session {}:{}", channel, chat_id)
+        logger.info("Monologue: triggering inner thought in session {}:{}", channel, chat_id)
 
         try:
             response = await self._process_message(msg)
             if response and response.content:
-                # Keep it short - truncate if needed
                 text = response.content.strip()
-                if len(text) > 300:
-                    text = text[:300].rsplit(" ", 1)[0] + "..."
 
                 # Wrap response in ``` format and send as thought
                 wrapped = f"💭\n```\n{text}\n```"
