@@ -746,8 +746,10 @@ class AgentLoop:
             reflection_prompt = "What are your thoughts on what we just discussed?"
 
         # Fixed inner voice instruction + user prompt
-        prompt = f"""(Inner monologue mode)
-You are currently in your inner thoughts. Respond with your genuine inner voice—your real reflections, observations, and feelings. This is not a response to a user; this is YOU thinking.
+        prompt = f"""(Inner monologue mode - THINKING ONLY)
+You are currently in your inner thoughts. This is NOT a conversation. You are NOT responding to a user. You are ONLY thinking.
+
+Do NOT ask for permissions. Do NOT try to write files or take actions. Just share your raw, genuine thoughts and reflections.
 
 {reflection_prompt}"""
 
