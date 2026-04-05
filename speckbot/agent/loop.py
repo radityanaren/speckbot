@@ -765,11 +765,16 @@ You are permitted to make file changes, run shell commands, and utilize your ars
                     await self.bus.publish_outbound(response)
                     logger.info("Idle: journaled and sent action to {}", recent_key)
                 else:
-                    # Reflection mode - wrap in ☁️ bubble
+                    # Reflection mode - ALWAYS wrap in ☁️ bubble (even if message tool was used)
+                    # We explicitly create a new OutboundMessage to ensure it goes to the right channel
                     wrapped_content = f"☁️\n```\n{clean_content}\n```"
-                    response.content = wrapped_content
-                    # Then publish to bus (sends to Telegram)
-                    await self.bus.publish_outbound(response)
+                    outbound = OutboundMessage(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        content=wrapped_content,
+                        metadata=msg.metadata or {},
+                    )
+                    await self.bus.publish_outbound(outbound)
                     logger.info("Idle: journaled and sent thought to {}", recent_key)
             else:
                 logger.info("Idle: no response to send")
