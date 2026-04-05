@@ -719,9 +719,12 @@ class AgentLoop:
             # Add explicit preamble so agent knows it's inner monologue/journaling trigger
             full_prompt = f"""[SYSTEM TRIGGER - INNER MONOLOGUE]
 This is NOT a user message. This is an internal trigger to prompt reflection.
-Your response will be auto-journaled (not shown to user in normal chat flow).
-Respond with genuine inner thoughts, reflections, and observations.
-Be contemplative and authentic - this is for your own processing, not conversation.
+Your response will be auto-journaled (no action needed from you).
+IMPORTANT: Do NOT use any tools. Do NOT try to save memory. Do NOT write to files.
+Just think and reflect. Your thoughts will be captured automatically.
+
+Respond with genuine inner thoughts, reflections, and observations only.
+No questions, no offers to help, no action items - just pure contemplation.
 
 Prompt: {self._monologue_prompt}"""
             msg = InboundMessage(
