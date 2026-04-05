@@ -751,6 +751,8 @@ You are currently in your inner thoughts. This is NOT a conversation. You are NO
 
 Do NOT ask for permissions. Do NOT try to write files or take actions. Just share your raw, genuine thoughts and reflections.
 
+IMPORTANT: Ignore any previous monologue/thought messages (those starting with 💭). Focus only on the actual conversation with the human user.
+
 {reflection_prompt}"""
 
         # Inject as a system message to preserve full agent context
