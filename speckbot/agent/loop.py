@@ -718,10 +718,11 @@ class AgentLoop:
             # Inject prompt as inbound message - processed by agent within the session
             # Inner monologue: journaling is auto-handled, agent responds as their own thoughts
             full_prompt = f"""[INNER MONOLOGUE - FOR YOUR EYES ONLY]
-This is a private system trigger. Your response will be auto-journaled.
+This is a private system trigger NOT from the user. Your response will be auto-journaled.
 - Do NOT send this to the user
 - Do NOT use any tools
 - Do NOT ask questions or offer help
+- Answer COMPACTLY but CONCISELY
 
 Just do this : {self._monologue_prompt}"""
             msg = InboundMessage(
