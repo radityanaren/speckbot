@@ -749,29 +749,44 @@ You are permitted to make file changes, run shell commands, and utilize your ars
             # Use session_key so it processes in the same session context
             response = await self._process_message(msg, session_key=recent_key)
 
-            # Write to journal BEFORE sending to user (bypasses security)
-            if response and response.content:
-                # Check for ACTION tag
+            # Handle the response - journal always, send to user if response exists
+            if response:
+                # Normal case - agent returned content (maybe with or without using message tool)
                 has_action_tag = "<ACTION>" in response.content
-
-                # Remove the ACTION tag from content before journaling/sending
                 clean_content = response.content.replace("<ACTION>", "").strip()
 
                 await self._write_journal(clean_content)
 
                 if has_action_tag:
-                    # Action mode - plain message, no wrap
                     response.content = clean_content
                     await self.bus.publish_outbound(response)
                     logger.info("Idle: journaled and sent action to {}", recent_key)
                 else:
-                    # Reflection mode - wrap in ☁️ bubble
                     wrapped_content = f"☁️\n```\n{clean_content}\n```"
                     response.content = wrapped_content
                     await self.bus.publish_outbound(response)
-                    logger.info("Idle: journaled and sent thought to {}", recent_key)
+                    logger.info("Idle: journaled and sent thought (wrapped) to {}", recent_key)
             else:
-                logger.info("Idle: no response to send")
+                # Agent used message tool - message already sent, just journal
+                # Get the last user message from session as the thought content
+                if recent_session and recent_session.messages:
+                    # Last message is the inner prompt we just injected, get the one before
+                    thought_content = (
+                        recent_session.messages[-2].get("content", "")
+                        if len(recent_session.messages) >= 2
+                        else "[thought content not found]"
+                    )
+                    # Clean up the inner prompt prefix
+                    if "[INNER MONOLOGUE" in thought_content:
+                        thought_content = (
+                            thought_content.split("]", 1)[1].strip()
+                            if "]" in thought_content
+                            else thought_content
+                        )
+                    if thought_content and not thought_content.startswith("[thought"):
+                        await self._write_journal(thought_content)
+                        logger.info("Idle: journaled thought (agent used message tool)")
+                logger.info("Idle: no direct response (agent used message tool)")
 
         except asyncio.CancelledError:
             # Timer was cancelled (user sent a message) - that's expected, do nothing
