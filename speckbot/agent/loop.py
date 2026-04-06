@@ -798,7 +798,15 @@ you would be able to call tools on the next monologue"""
 
                 # Check if this was a normal chat turn (from previous ACTION)
                 # Normal chat responses are always visible (free form, no prefix)
-                if msg.metadata.get("is_normal_chat"):
+                is_normal_chat = msg.metadata.get("is_normal_chat")
+                logger.info(
+                    "Idle: is_normal_chat={}, has_action={}, visible={}",
+                    is_normal_chat,
+                    has_action_tag,
+                    self._monologue_visible,
+                )
+
+                if is_normal_chat:
                     # Clean for normal chat too
                     response.content = clean_content
                     await self.bus.publish_outbound(response)
