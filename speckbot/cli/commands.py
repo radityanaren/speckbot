@@ -504,10 +504,8 @@ def gateway(
         session_manager=session_manager,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
-        hooks_config=config.gateway.security.model_dump() if config.gateway.security else None,
-        monologue_config=config.gateway.monologue.model_dump()
-        if config.gateway.monologue
-        else None,
+        hooks_config=config.security.model_dump() if config.security else None,
+        monologue_config=config.agents.monologue.model_dump() if config.agents.monologue else None,
     )
 
     # Set cron callback (needs agent)
@@ -609,7 +607,7 @@ def gateway(
             OutboundMessage(channel=channel, chat_id=chat_id, content=response)
         )
 
-    hb_cfg = config.gateway.heartbeat
+    hb_cfg = config.agents.heartbeat
     heartbeat = HeartbeatService(
         workspace=config.workspace_path,
         provider=provider,
@@ -621,7 +619,7 @@ def gateway(
     )
 
     # Monologue config
-    mono_cfg = config.gateway.monologue
+    mono_cfg = config.agents.monologue
 
     if channels.enabled_channels:
         console.print(f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")
@@ -759,7 +757,7 @@ def agent(
         restrict_to_workspace=config.tools.restrict_to_workspace,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
-        hooks_config=config.gateway.security.model_dump() if config.gateway.security else None,
+        hooks_config=config.security.model_dump() if config.security else None,
     )
 
     # Shared reference for progress callbacks
