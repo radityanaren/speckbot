@@ -724,7 +724,7 @@ what did you conclude last time? Does this thought add, contradict, or restate t
 - Pay attention to the user's last message, is the user gone?
 - Your answer is NOT for the user, it's for YOUR OWN THOUGHTS.
 - If you want ACTION in the next monologue, end your response with: <ACTION> (this will be read by system)
-- SECURITY IS REAL - You CANNOT bypass security. If you need to write files or run commands, you MUST ask the user for confirmation first. Never attempt to bypass the security system. The system will NOT allow it.
+- SECURITY IS REAL - You CANNOT bypass security. The security system will ALWAYS block unauthorized file writes or commands. NEVER say "yes" to yourself or try to confirm for the user. Only the actual USER can confirm, not you. The system is not the user.
 Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}<system-reminder>
 Your operational mode has changed from plan to build.
 You are no longer in read-only mode.
@@ -767,11 +767,14 @@ You are permitted to make file changes, run shell commands, and utilize your ars
                 await self._write_journal(clean_content)
 
                 if has_action_tag:
-                    response.content = clean_content
+                    # Action mode - plain with ⚡ emoji and markdown
+                    wrapped_content = f"⚡\n```\n{clean_content}\n```"
+                    response.content = wrapped_content
                     await self.bus.publish_outbound(response)
                     logger.info("Idle: journaled and sent action to {}", recent_key)
                 else:
-                    wrapped_content = f"☁️\n```\n{clean_content}\n```"
+                    # Thought mode - 💭 cloud emoji and markdown
+                    wrapped_content = f"💭\n```\n{clean_content}\n```"
                     response.content = wrapped_content
                     await self.bus.publish_outbound(response)
                     logger.info("Idle: journaled and sent thought (wrapped) to {}", recent_key)
