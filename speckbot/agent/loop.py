@@ -738,11 +738,11 @@ You are free to use any tools if needed."""
             else:
                 # Monologue - invisible thoughts
                 full_prompt = f"""[MONOLOGUE - {self._monologue_idle_seconds} seconds idle]
-This is a system auto trigger. Your thoughts are invisible to the user.
-- If restate → hard pivot.
+This is a system auto trigger. Your answer will not get seen by the user.
+- pay attention, if you restate → hard pivot.
 - Pay attention to the user's last message, is the user gone?
-- If you want to message user NEXT cycle, end with: <ACTION>
-just answer truthfully and simple : {self._monologue_prompt}"""
+- If you want to use tools or message user NEXT cycle, end with: <ACTION>
+if you don't, just answer this for yourself: {self._monologue_prompt}"""
             # Use session_key to ensure response goes to correct channel
             msg = InboundMessage(
                 channel=channel,
