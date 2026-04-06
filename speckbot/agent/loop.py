@@ -101,6 +101,12 @@ class AgentLoop:
         self._monologue_visible = (
             monologue_config.get("visible", True) if monologue_config else True
         )
+        logger.info(
+            "Monologue config: enabled={}, idle={}s, visible={}",
+            self._monologue_enabled,
+            self._monologue_idle_seconds,
+            self._monologue_visible,
+        )
         self._idle_timer_task: asyncio.Task | None = None  # Idle timer task
         self._next_is_normal: bool = False  # If True, next idle fires normal chat (from ACTION tag)
 
@@ -807,12 +813,16 @@ you would be able to call tools on the next monologue"""
                     logger.info("Idle: ACTION sent (⚡), will trigger normal chat on next idle")
                 elif self._monologue_visible:
                     # Thought mode - visible to user
+                    logger.info(
+                        "Idle: monologue_visible={}, sending thought", self._monologue_visible
+                    )
                     wrapped_content = f"💭\n```\n{clean_content}\n```"
                     response.content = wrapped_content
                     await self.bus.publish_outbound(response)
                     logger.info("Idle: journaled and sent thought to {}", recent_key)
                 else:
                     # Thought mode - invisible (journal only)
+                    logger.info("Idle: monologue_visible={}, journal only", self._monologue_visible)
                     logger.info("Idle: journaled thought (invisible) to {}", recent_key)
             else:
                 # Agent used message tool - message already sent
