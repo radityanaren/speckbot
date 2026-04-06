@@ -751,8 +751,8 @@ You are permitted to make file changes, run shell commands, and utilize your ars
 
             # Handle the response - journal always, send to user if response exists
             if response:
-                # Normal case - agent returned content (maybe with or without using message tool)
-                # Only treat as action if <ACTION> is at the very end (not in the middle of content)
+                # Check for ACTION tag at the end - this means agent wants to trigger an action
+                # Remove the ACTION tag from the response so it's not included in next monologue
                 has_action_tag = response.content.strip().endswith("<ACTION>")
                 clean_content = response.content.replace("<ACTION>", "").strip()
 
@@ -767,6 +767,8 @@ You are permitted to make file changes, run shell commands, and utilize your ars
 
                 if has_action_tag:
                     # Action mode - plain with ⚡ emoji and markdown
+                    # The action was already executed in this turn via tool calls
+                    # Next monologue will start fresh (no action unless agent adds <ACTION> again)
                     wrapped_content = f"⚡\n```\n{clean_content}\n```"
                     response.content = wrapped_content
                     await self.bus.publish_outbound(response)
