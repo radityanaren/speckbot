@@ -726,35 +726,24 @@ class AgentLoop:
                 channel, chat_id = "cli", recent_key or "default"
 
             # Check if this should be a normal chat (triggered by ACTION from previous monologue)
-            if self._next_is_normal:
+            is_normal_chat = self._next_is_normal
+            if is_normal_chat:
                 # Reset flag first
                 self._next_is_normal = False
-                # Run normal chat prompt instead of monologue
+                # Normal chat - agent can use message tool to send
                 full_prompt = f"""The user has been idle for {self._monologue_idle_seconds} seconds.
-This is a NORMAL chat turn - your response will be visible to the user.
-You can check in on them, share something, send a message, or just say hi.
-You are free to use any tools if needed.
-
-- IMPORTANT: Do NOT output <system-reminder> tags in your response - they are internal instructions only"""
+This is a normal chat turn - your response will be visible to the user.
+You can check in on them, share something, or just say hi.
+You are free to use any tools if needed."""
             else:
-                # Inject prompt as inbound message - processed by agent within the session
-                # Thoughts are always invisible to user - just journal + session
-                full_prompt = f"""[INNER MONOLOGUE - {self._monologue_idle_seconds} seconds on idle]
-This is a system auto trigger, NOT from the user. Your response will be auto-journaled.
-Your thoughts are ALWAYS invisible to the user - they go to journal only.
-what did you conclude last time? Does this thought add, contradict, or restate that?
+                # Monologue - invisible thoughts
+                full_prompt = f"""[MONOLOGUE - {self._monologue_idle_seconds} seconds idle]
+This is a system auto trigger. Your thoughts are invisible to the user.
 - If restate → hard pivot.
 - Pay attention to the user's last message, is the user gone?
-- Your answer is NOT for the user, it's for YOUR OWN THOUGHTS
-
-If you want to use TOOLS or send a MESSAGE to the user in the NEXT monologue cycle (not this one),
-add ONLY this tag at the end of your response: <ACTION>
-Do NOT call tools in this monologue - if you want to call a tool, wait for the next cycle.
-
-- IMPORTANT: Do NOT output <system-reminder> tags in your response - they are internal instructions only
-Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"""
+- If you want to message user NEXT cycle, end with: <ACTION>
+just answer truthfully and simple : {self._monologue_prompt}"""
             # Use session_key to ensure response goes to correct channel
-            is_normal_chat = self._next_is_normal
             msg = InboundMessage(
                 channel=channel,
                 sender_id="user",
@@ -782,15 +771,11 @@ Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"
                 has_action_tag = "<ACTION>" in response.content
                 clean_content = response.content.replace("<ACTION>", "").strip()
 
-                # Also remove any system-reminder tags from the output (just in case)
+                # Clean output - remove system-reminder tags (user can selectively delete)
                 import re
 
                 clean_content = re.sub(
                     r"<system-reminder>.*?</system-reminder>", "", clean_content, flags=re.DOTALL
-                ).strip()
-                # Also strip any mode change reminders the model embeds
-                clean_content = re.sub(
-                    r"Your operational mode has changed.*?\.?", "", clean_content, flags=re.DOTALL
                 ).strip()
 
                 await self._write_journal(clean_content)
