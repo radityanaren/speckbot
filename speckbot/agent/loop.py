@@ -102,6 +102,7 @@ class AgentLoop:
             monologue_config.get("visible", True) if monologue_config else True
         )
         self._idle_timer_task: asyncio.Task | None = None  # Idle timer task
+        self._next_is_normal: bool = False  # If True, next idle fires normal chat (from ACTION tag)
 
         # Create shared security service first
         from speckbot.agent.security import SecurityService
@@ -369,6 +370,12 @@ class AgentLoop:
     async def _dispatch(self, msg: InboundMessage) -> None:
         """Process a message under the global lock. Restart idle timer after saving to session."""
         async with self._processing_lock:
+            # If user sends a message, cancel any pending normal chat from ACTION
+            # Only happens if N and N+1 are consecutive (no user msg in between)
+            if self._next_is_normal:
+                logger.info("User message received, cancelling pending normal chat")
+                self._next_is_normal = False
+
             try:
                 response = await self._process_message(msg)
 
@@ -718,9 +725,18 @@ class AgentLoop:
             else:
                 channel, chat_id = "cli", recent_key or "default"
 
-            # Inject prompt as inbound message - processed by agent within the session
-            # Thoughts are always invisible to user - just journal + session
-            full_prompt = f"""[INNER MONOLOGUE - {self._monologue_idle_seconds} seconds on idle]
+            # Check if this should be a normal chat (triggered by ACTION from previous monologue)
+            if self._next_is_normal:
+                # Reset flag first
+                self._next_is_normal = False
+                # Run normal chat prompt instead of monologue
+                full_prompt = f"""The user has been idle for {self._monologue_idle_seconds} seconds.
+What would you like to say to them? This is a normal chat turn - your response will be visible to the user.
+You can check in on them, share something, or just say hi."""
+            else:
+                # Inject prompt as inbound message - processed by agent within the session
+                # Thoughts are always invisible to user - just journal + session
+                full_prompt = f"""[INNER MONOLOGUE - {self._monologue_idle_seconds} seconds on idle]
 This is a system auto trigger, NOT from the user. Your response will be auto-journaled.
 Your thoughts are ALWAYS invisible to the user - they go to journal only.
 what did you conclude last time? Does this thought add, contradict, or restate that?
@@ -730,12 +746,13 @@ what did you conclude last time? Does this thought add, contradict, or restate t
 - If you want to use a tool in the next monologue, add your response with: <ACTION> (this will be read by system)
 Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"""
             # Use session_key to ensure response goes to correct channel
+            is_normal_chat = self._next_is_normal
             msg = InboundMessage(
                 channel=channel,
                 sender_id="user",
                 chat_id=chat_id,
                 content=full_prompt,
-                metadata={"is_idle_prompt": True},
+                metadata={"is_idle_prompt": True, "is_normal_chat": is_normal_chat},
                 session_key_override=recent_key,
             )
             logger.info(
@@ -766,12 +783,19 @@ Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"
 
                 await self._write_journal(clean_content)
 
-                if has_action_tag:
-                    # Action mode - plain with ⚡ emoji and markdown (always visible)
+                # Check if this was a normal chat turn (from previous ACTION)
+                # Normal chat responses are always visible (free form, no prefix)
+                if msg.metadata.get("is_normal_chat"):
+                    await self.bus.publish_outbound(response)
+                    logger.info("Idle: normal chat response sent to {}", recent_key)
+                elif has_action_tag:
+                    # ACTION tag found - send to user NOW with ⚡ + markdown
                     wrapped_content = f"⚡\n```\n{clean_content}\n```"
                     response.content = wrapped_content
                     await self.bus.publish_outbound(response)
-                    logger.info("Idle: journaled and sent action to {}", recent_key)
+                    # Also set flag to trigger normal chat on NEXT idle
+                    self._next_is_normal = True
+                    logger.info("Idle: ACTION sent (⚡), will trigger normal chat on next idle")
                 elif self._monologue_visible:
                     # Thought mode - visible to user
                     wrapped_content = f"💭\n```\n{clean_content}\n```"
@@ -782,26 +806,30 @@ Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"
                     # Thought mode - invisible (journal only)
                     logger.info("Idle: journaled thought (invisible) to {}", recent_key)
             else:
-                # Agent used message tool - message already sent, just journal
-                # Get the last user message from session as the thought content
-                if recent_session and recent_session.messages:
-                    # Last message is the inner prompt we just injected, get the one before
-                    thought_content = (
-                        recent_session.messages[-2].get("content", "")
-                        if len(recent_session.messages) >= 2
-                        else "[thought content not found]"
-                    )
-                    # Clean up the inner prompt prefix
-                    if "[INNER MONOLOGUE" in thought_content:
+                # Agent used message tool - message already sent
+                # Check if this was a normal chat turn
+                if msg.metadata.get("is_normal_chat"):
+                    logger.info("Idle: agent sent message via tool (normal chat) to {}", recent_key)
+                else:
+                    # Get the last user message from session as the thought content
+                    if recent_session and recent_session.messages:
+                        # Last message is the inner prompt we just injected, get the one before
                         thought_content = (
-                            thought_content.split("]", 1)[1].strip()
-                            if "]" in thought_content
-                            else thought_content
+                            recent_session.messages[-2].get("content", "")
+                            if len(recent_session.messages) >= 2
+                            else "[thought content not found]"
                         )
-                    if thought_content and not thought_content.startswith("[thought"):
-                        await self._write_journal(thought_content)
-                        logger.info("Idle: journaled thought (agent used message tool)")
-                logger.info("Idle: no direct response (agent used message tool)")
+                        # Clean up the inner prompt prefix
+                        if "[INNER MONOLOGUE" in thought_content:
+                            thought_content = (
+                                thought_content.split("]", 1)[1].strip()
+                                if "]" in thought_content
+                                else thought_content
+                            )
+                        if thought_content and not thought_content.startswith("[thought"):
+                            await self._write_journal(thought_content)
+                            logger.info("Idle: journaled thought (agent used message tool)")
+                    logger.info("Idle: no direct response (agent used message tool)")
 
         except asyncio.CancelledError:
             # Timer was cancelled (user sent a message) - that's expected, do nothing
