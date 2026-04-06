@@ -727,7 +727,7 @@ what did you conclude last time? Does this thought add, contradict, or restate t
 - If restate → hard pivot.
 - Pay attention to the user's last message, is the user gone?
 - Your answer is NOT for the user, it's for YOUR OWN THOUGHTS
-- If you want ACTION in the next monologue, end your response with: <ACTION> (this will be read by system)
+- If you want to use a tool in the next monologue, add your response with: <ACTION> (this will be read by system)
 Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"""
             # Use session_key to ensure response goes to correct channel
             msg = InboundMessage(
@@ -752,11 +752,12 @@ Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"
             # Handle the response - journal always, send to user if response exists
             if response:
                 # Check for ACTION tag at the end - this means agent wants to trigger an action
-                # Remove the ACTION tag from the response so it's not included in next monologue
-                has_action_tag = response.content.strip().endswith("<ACTION>")
+                # Check for ACTION tag anywhere in content (not just at end)
+                # If found, treat as action - send to user, not journal-only
+                has_action_tag = "<ACTION>" in response.content
                 clean_content = response.content.replace("<ACTION>", "").strip()
 
-                # Also remove any system-reminder tags from the output (agent might add them)
+                # Also remove any system-reminder tags from the output (just in case)
                 import re
 
                 clean_content = re.sub(
