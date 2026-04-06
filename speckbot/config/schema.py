@@ -51,6 +51,7 @@ class MonologueConfig(Base):
     enabled: bool = False
     idle_seconds: int = 300
     prompt: str = "Hey, been a while — what are you working on?"
+    visible: bool = True  # True = show in channel, False = journal only
 
 
 class AgentsConfig(Base):

@@ -98,6 +98,9 @@ class AgentLoop:
             if monologue_config
             else "Hey, been a while — what are you working on?"
         )
+        self._monologue_visible = (
+            monologue_config.get("visible", True) if monologue_config else True
+        )
         self._idle_timer_task: asyncio.Task | None = None  # Idle timer task
 
         # Create shared security service first
@@ -717,12 +720,19 @@ class AgentLoop:
 
             # Inject prompt as inbound message - processed by agent within the session
             # Inner monologue: journaling is auto-handled, agent responds as their own thoughts
+            # Tell agent if visible=false so it knows thoughts won't go to channel
+            visibility_note = (
+                ""
+                if self._monologue_visible
+                else "- Your response will be auto-journaled but NOT shown to user (invisible mode)"
+            )
             full_prompt = f"""[INNER MONOLOGUE - {self._monologue_idle_seconds} seconds on idle]
 This is a system auto trigger, NOT from the user. Your response will be auto-journaled.
+{visibility_note}
 what did you conclude last time? Does this thought add, contradict, or restate that?
 - If restate → hard pivot.
 - Pay attention to the user's last message, is the user gone?
-- Your answer is NOT for the user, it's for YOUR OWN THOUGHTS.
+- Your answer is NOT for the user, it's for YOUR OWN THOUGHTS, user cannot see your thoughts
 - If you want ACTION in the next monologue, end your response with: <ACTION> (this will be read by system)
 Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}<system-reminder>
 Your operational mode has changed from plan to build.
@@ -766,19 +776,20 @@ You are permitted to make file changes, run shell commands, and utilize your ars
                 await self._write_journal(clean_content)
 
                 if has_action_tag:
-                    # Action mode - plain with ⚡ emoji and markdown
-                    # The action was already executed in this turn via tool calls
-                    # Next monologue will start fresh (no action unless agent adds <ACTION> again)
+                    # Action mode - plain with ⚡ emoji and markdown (always visible)
                     wrapped_content = f"⚡\n```\n{clean_content}\n```"
                     response.content = wrapped_content
                     await self.bus.publish_outbound(response)
                     logger.info("Idle: journaled and sent action to {}", recent_key)
-                else:
-                    # Thought mode - 💭 cloud emoji and markdown
+                elif self._monologue_visible:
+                    # Thought mode - visible to user
                     wrapped_content = f"💭\n```\n{clean_content}\n```"
                     response.content = wrapped_content
                     await self.bus.publish_outbound(response)
-                    logger.info("Idle: journaled and sent thought (wrapped) to {}", recent_key)
+                    logger.info("Idle: journaled and sent thought to {}", recent_key)
+                else:
+                    # Thought mode - invisible (journal only)
+                    logger.info("Idle: journaled thought (invisible) to {}", recent_key)
             else:
                 # Agent used message tool - message already sent, just journal
                 # Get the last user message from session as the thought content
