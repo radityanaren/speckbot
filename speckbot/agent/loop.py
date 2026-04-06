@@ -756,12 +756,12 @@ Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"
                 has_action_tag = response.content.strip().endswith("<ACTION>")
                 clean_content = response.content.replace("<ACTION>", "").strip()
 
-                # Also remove any system-reminder tags from the output
-                clean_content = (
-                    clean_content.replace("<system-reminder>", "")
-                    .replace("</system-reminder>", "")
-                    .strip()
-                )
+                # Also remove any system-reminder tags from the output (agent might add them)
+                import re
+
+                clean_content = re.sub(
+                    r"<system-reminder>.*?</system-reminder>", "", clean_content, flags=re.DOTALL
+                ).strip()
 
                 await self._write_journal(clean_content)
 
