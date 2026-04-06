@@ -54,26 +54,12 @@ class ToolRegistry:
 
         # Security check using shared security service
         if self._security and self._security.enabled:
-            # First check for pending confirmation that was just confirmed
-            if session_key:
-                # Check if there's a pending confirmation for this session
-                if self._security.has_pending_confirmation(session_key):
-                    # There's still a pending prompt - user hasn't responded yet
-                    pending_prompt = self._security.get_pending_prompt(session_key)
-                    if pending_prompt:
-                        return f"Error: {pending_prompt}"
-                    # No pending = user already responded (either yes or no), let scan_tool handle it
-
-            # Check if tool needs confirmation or should be blocked
+            # Check if tool should be blocked
             block_result = self._security.scan_tool(name, params, session_key)
 
             if block_result.is_blocked:
                 reason = block_result.reason or "matches blocked pattern"
                 return f"Error: Tool '{name}' blocked by security. Reason: {reason}"
-
-            if block_result.is_ask:
-                prompt = block_result.reason or f"Confirm: {name}? [yes/no]"
-                return f"Error: {prompt}"
 
         try:
             # Attempt to cast parameters to match schema types

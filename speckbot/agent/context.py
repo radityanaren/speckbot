@@ -163,28 +163,6 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         # Use shared security service if available
         security = self.security
 
-        # Check for pending confirmation response first
-        if not skip_security and security and security.enabled and session_key and current_message:
-            confirm_result = security.check_confirmation_response(current_message, session_key)
-            if confirm_result.is_ask:
-                # Still waiting for confirmation - prompt user
-                prompt = confirm_result.reason or "Waiting for confirmation..."
-                return [
-                    {"role": "system", "content": self.build_system_prompt(skill_names)},
-                    *history,
-                    {
-                        "role": "user",
-                        "content": f"{prompt}\n\n(Note: Your response will be interpreted as yes/no confirmation.)",
-                    },
-                ]
-            elif confirm_result.is_blocked:
-                # User denied the tool
-                return [
-                    {"role": "system", "content": "Tool execution denied by user."},
-                ]
-            # If ALLOW (confirmed), save state and continue
-            security.save_state()
-
         # Scan user message for blocked content
         if not skip_security and security and security.enabled:
             block_result = security.scan_input(current_message)
