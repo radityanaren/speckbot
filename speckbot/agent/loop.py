@@ -737,12 +737,22 @@ You can check in on them, share something, or just say hi.
 You are free to use any tools if needed."""
             else:
                 # Monologue - invisible thoughts
-                full_prompt = f"""[MONOLOGUE - {self._monologue_idle_seconds} seconds idle]
-This is a system auto trigger. Your answer will not get seen by the user.
-- pay attention, if you restate → hard pivot.
-- Pay attention to the user's last message, is the user gone?
-- If you want to use tools or message user NEXT cycle, end with: <ACTION>
-if you don't, just answer this for yourself: {self._monologue_prompt}"""
+                full_prompt = f"""[SYSTEM - INNER MONOLOGUE]
+You have been idle for {self._monologue_idle_seconds} seconds.
+This message is automatic. The user cannot see your response.
+
+RULES:
+1. You are thinking privately. Be honest, not performative.
+2. Check your last thought. If you are repeating it → change direction completely.
+3. Check the user's last message. Are they gone? Are they coming back?
+4. Do NOT message the user. Do NOT use tools. Just think.
+
+THEN ANSWER THIS:
+{self._monologue_prompt}
+
+IF anything came up worth acting on, end with:
+<ACTION> what you want to do and why </ACTION>
+you would be able to call tools on the next monologue"""
             # Use session_key to ensure response goes to correct channel
             msg = InboundMessage(
                 channel=channel,
