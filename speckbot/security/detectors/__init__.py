@@ -7,15 +7,13 @@ from loguru import logger
 
 from speckbot.security.detectors.base import DetectorBase, SecurityResult, HookResult
 from speckbot.security.detectors.block import BlockDetector
-from speckbot.security.detectors.ask import AskDetector, PendingConfirmation
 
 
 class SecurityGateway:
     """Central security gateway that wraps the AI model.
 
-    Provides two-layer security:
+    Provides BLOCK security:
     - BLOCK: Content/commands that are blocked (credentials, dangerous commands, etc.)
-    - ASK: Tools that require user confirmation before execution
 
     Usage:
         gateway = SecurityGateway(config)
@@ -34,8 +32,8 @@ class SecurityGateway:
         """Initialize security gateway with configuration.
 
         Args:
-            config: Hooks configuration dict from config.json
-            workspace: Path to workspace for saving pending confirmations
+            config: Security configuration dict
+            workspace: Path to workspace
         """
         self.config = config or {}
         self.enabled = self.config.get("enabled", False)
@@ -49,18 +47,6 @@ class SecurityGateway:
             # New format: patterns at top level
             patterns = self.config.get("patterns", [])
         self.block_detector = BlockDetector(patterns=patterns)
-
-        # Initialize ASK detector with tools from config (optional - for backward compat)
-        ask_config = self.config.get("ask", {})
-        if isinstance(ask_config, list):
-            ask_tools = ask_config
-        else:
-            ask_tools = ask_config.get("tools", []) if ask_config else []
-        self.ask_detector = AskDetector(ask_tools=ask_tools)
-
-        # Load pending confirmations from file if workspace provided
-        if workspace:
-            self.ask_detector.load_pending_from_file(workspace)
 
         logger.info(f"[SecurityGateway] Initialized (enabled={self.enabled})")
 
@@ -103,39 +89,15 @@ class SecurityGateway:
         Args:
             tool_name: Name of the tool to execute
             params: Tool parameters
-            session_key: Session key for pending confirmation tracking
+            session_key: Session key (unused, kept for API compat)
 
         Returns:
-            SecurityResult - ASK if needs confirmation, BLOCK if dangerous, ALLOW otherwise
+            SecurityResult - BLOCK if dangerous, ALLOW otherwise
         """
         if not self.enabled:
             return SecurityResult(HookResult.ALLOW)
 
         params = params or {}
-
-        # First check if tool was already confirmed in this session
-        # If so, skip ASK and execute directly (fixes confirmation loop)
-        if session_key and self.ask_detector.was_confirmed(session_key, tool_name):
-            logger.info(
-                f"[SecurityGateway] Tool '{tool_name}' already confirmed, allowing execution"
-            )
-            return SecurityResult(HookResult.ALLOW)
-
-        # First check if tool needs confirmation (ASK)
-        ask_result = self.ask_detector.check_tool(tool_name, params)
-        if ask_result.is_ask:
-            # Store pending confirmation
-            if session_key:
-                self.ask_detector._pending[session_key] = PendingConfirmation(
-                    tool_name=tool_name,
-                    params=params,
-                    context="tool_execution",
-                    session_key=session_key,
-                )
-                # Save to file for persistence
-                if self.workspace:
-                    self.ask_detector.save_pending_to_file(self.workspace)
-            return ask_result
 
         # Check tool parameters against BLOCK patterns
         block_result = self.block_detector.check_params(params, context=f"tool.{tool_name}")
@@ -175,81 +137,23 @@ class SecurityGateway:
         text: str | None,
         session_key: str,
     ) -> SecurityResult:
-        """Check user response to confirmation prompt.
+        """Check user response (no longer used, kept for API compat).
 
-        Args:
-            text: User's response (e.g., "yes", "no")
-            session_key: Session key to identify pending confirmation
-
-        Returns:
-            SecurityResult - ALLOW if confirmed, BLOCK if denied, ASK if still pending
+        Returns ALLOW - confirmations are now handled via soft prompts.
         """
-        if not self.enabled:
-            return SecurityResult(HookResult.ALLOW)
-
-        # Check if there's a pending confirmation
-        pending = self.ask_detector.get_pending(session_key)
-        if not pending:
-            return SecurityResult(HookResult.ALLOW)
-
-        # Process yes/no response
-        response = (text or "").strip().lower() if text else ""
-
-        if response in ("yes", "y", "confirm", "ok", "sure", "go", "run"):
-            # User confirmed - execute the tool
-            logger.info(f"[SecurityGateway] User confirmed: {pending.tool_name}")
-
-            # Mark the tool as confirmed so it won't re-ask when re-executed
-            self.ask_detector.mark_confirmed(session_key, pending.tool_name)
-
-            # Clear pending and return ALLOW with tool info
-            self.ask_detector.clear_pending(session_key)
-            if self.workspace:
-                self.ask_detector.save_pending_to_file(self.workspace)
-
-            return SecurityResult(
-                HookResult.ALLOW,
-                reason=f"confirmed: {pending.tool_name}",
-                details=pending.to_dict(),
-            )
-        elif response in ("no", "n", "cancel", "deny", "stop"):
-            # User denied
-            logger.info(f"[SecurityGateway] User denied: {pending.tool_name}")
-
-            self.ask_detector.clear_pending(session_key)
-            if self.workspace:
-                self.ask_detector.save_pending_to_file(self.workspace)
-
-            return SecurityResult(
-                HookResult.BLOCK,
-                reason=f"denied: {pending.tool_name}",
-                details={"tool": pending.tool_name, "params": pending.params},
-            )
-        else:
-            # Not a yes/no response - keep pending
-            params_str = self.ask_detector._format_params(pending.params)
-            return SecurityResult(
-                HookResult.ASK,
-                reason=f"Waiting for confirmation: {pending.tool_name}({params_str})? [yes/no]",
-                details={"session_key": session_key, "tool": pending.tool_name},
-            )
+        return SecurityResult(HookResult.ALLOW)
 
     def has_pending_confirmation(self, session_key: str) -> bool:
-        """Check if there's a pending confirmation for a session."""
-        return self.ask_detector.has_pending(session_key)
+        """Check if there's a pending confirmation (always False now)."""
+        return False
 
     def get_pending_prompt(self, session_key: str) -> str | None:
-        """Get the pending confirmation prompt for a session."""
-        pending = self.ask_detector.get_pending(session_key)
-        if pending:
-            params_str = self.ask_detector._format_params(pending.params)
-            return f"Confirm: {pending.tool_name}({params_str})? [yes/no]"
+        """Get the pending confirmation prompt (always None now)."""
         return None
 
     def save_state(self) -> None:
-        """Save pending confirmations to file."""
-        if self.workspace:
-            self.ask_detector.save_pending_to_file(self.workspace)
+        """Save state (no-op now, kept for API compat)."""
+        pass
 
 
 # Convenience function to create gateway
