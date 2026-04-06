@@ -22,17 +22,7 @@ class Base(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
-class ChannelsConfig(Base):
-    """Configuration for chat channels.
-
-    Built-in and plugin channel configs are stored as extra fields (dicts).
-    Each channel parses its own config in __init__.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    send_progress: bool = True  # stream agent's text progress to the channel
-    send_tool_hints: bool = False  # stream tool-call hints (e.g. read_file("…"))
+# ==================== TOP SECTION ====================
 
 
 class AgentDefaults(Base):
@@ -56,6 +46,73 @@ class AgentsConfig(Base):
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
 
 
+class HeartbeatConfig(Base):
+    """Heartbeat service configuration."""
+
+    enabled: bool = True
+    interval_seconds: int = 30 * 60  # 30 minutes
+
+
+class MonologueConfig(Base):
+    """Monologue system - time-triggered prompt to active session."""
+
+    enabled: bool = False
+    idle_seconds: int = 300  # Time in seconds before triggering
+    prompt: str = "Hey, been a while — what are you working on?"  # Message to send
+
+
+class SecurityConfig(Base):
+    """Security detector configuration (BLOCK patterns only, no ASK)."""
+
+    enabled: bool = False
+    # BLOCK: Regex patterns to block any content (credentials, dangerous commands, etc.)
+    # Can block: user input, AI output, tool parameters, bash commands
+    patterns: list[str] = Field(
+        default_factory=lambda: [
+            # Dangerous shell commands
+            r"\brm\s+-rf\s+[\/\.]",
+            r"\bformat\s+[a-z]:",
+            r"\bdel\s+/f\s+/s\s+/q",
+            r"\bdd\s+if=",
+            r">\s*/dev/",
+            r"\bmkfs\.",
+            r"\bshutdown\b",
+            r"\breboot\b",
+        ]
+    )
+    # Audit log path (None = disabled)
+    audit_log: str | None = None
+
+
+class GatewayConfig(Base):
+    """Gateway/server configuration."""
+
+    host: str = "0.0.0.0"
+    port: int = 18790
+    heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
+    monologue: MonologueConfig = Field(default_factory=MonologueConfig)
+    security: SecurityConfig = Field(default_factory=SecurityConfig)
+
+
+# ==================== CHANNELS ====================
+
+
+class ChannelsConfig(Base):
+    """Configuration for chat channels.
+
+    Built-in and plugin channel configs are stored as extra fields (dicts).
+    Each channel parses its own config in __init__.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    send_progress: bool = True  # stream agent's text progress to the channel
+    send_tool_hints: bool = False  # stream tool-call hints (e.g. read_file("…"))
+
+
+# ==================== PROVIDERS ====================
+
+
 class ProviderConfig(Base):
     """LLM provider configuration."""
 
@@ -76,28 +133,7 @@ class ProvidersConfig(Base):
     gemini: ProviderConfig = Field(default_factory=ProviderConfig)
 
 
-class HeartbeatConfig(Base):
-    """Heartbeat service configuration."""
-
-    enabled: bool = True
-    interval_seconds: int = 30 * 60  # 30 minutes
-
-
-class MonologueConfig(Base):
-    """Monologue system - time-triggered prompt to active session."""
-
-    enabled: bool = False
-    idle_seconds: int = 300  # Time in seconds before triggering
-    prompt: str = "Hey, been a while — what are you working on?"  # Message to send
-
-
-class GatewayConfig(Base):
-    """Gateway/server configuration."""
-
-    host: str = "0.0.0.0"
-    port: int = 18790
-    heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
-    monologue: MonologueConfig = Field(default_factory=MonologueConfig)
+# ==================== TOOLS (BOTTOM) ====================
 
 
 class WebSearchConfig(Base):
@@ -171,6 +207,9 @@ class ToolsConfig(Base):
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=_default_mcp_servers)
 
 
+# ==================== DREAM ====================
+
+
 class DreamConfig(Base):
     """Sleep system - memory cleanup and auto-restart configuration."""
 
@@ -183,45 +222,7 @@ class DreamConfig(Base):
     sleep_interval_hours: int = 24  # Auto-restart every X hours (0 = disabled)
 
 
-class DetectorConfig(Base):
-    """System-level security detector configuration.
-
-    Provides two-layer security:
-    - BLOCK: Content/commands that are completely blocked (matches patterns)
-    - ASK: Tools that require user confirmation before execution
-    """
-
-    enabled: bool = False
-    # BLOCK: Regex patterns to block any content (credentials, dangerous commands, etc.)
-    # Can block: user input, AI output, tool parameters, bash commands
-    block: dict[str, Any] = Field(
-        default_factory=lambda: {
-            "patterns": [
-                # Dangerous shell commands (word boundary ensures false positives don't match file content)
-                r"\brm\s+-rf\s+[\/\.]",  # rm -rf / or rm -rf .
-                r"\bformat\s+[a-z]:",  # format C:
-                r"\bdel\s+/f\s+/s\s+/q",  # del /f /s /q
-                r"\bdd\s+if=",  # dd if=
-                r">\s*/dev/",  # > /dev/
-                r"\bmkfs\.",  # mkfs.*
-                r"\bshutdown\b",  # shutdown (with word boundary)
-                r"\breboot\b",  # reboot (with word boundary)
-            ]
-        }
-    )
-    # ASK: Tools that require user confirmation before execution
-    ask: list[str] = Field(
-        default_factory=lambda: [
-            "edit_file",
-            "write_file",
-            "bash",
-            "exec",
-            "delete_file",
-            "delete_directory",
-        ]
-    )
-    # Audit log path (None = disabled)
-    audit_log: str | None = None
+# ==================== ROOT CONFIG ====================
 
 
 class Config(BaseSettings):
@@ -233,7 +234,6 @@ class Config(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     dream: DreamConfig = Field(default_factory=DreamConfig)
-    detector: DetectorConfig = Field(default_factory=DetectorConfig)
 
     @property
     def workspace_path(self) -> Path:

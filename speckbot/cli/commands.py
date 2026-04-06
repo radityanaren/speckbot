@@ -504,7 +504,7 @@ def gateway(
         session_manager=session_manager,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
-        hooks_config=config.detector.model_dump() if config.detector else None,
+        hooks_config=config.gateway.security.model_dump() if config.gateway.security else None,
         monologue_config=config.gateway.monologue.model_dump()
         if config.gateway.monologue
         else None,
@@ -759,7 +759,7 @@ def agent(
         restrict_to_workspace=config.tools.restrict_to_workspace,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
-        hooks_config=config.detector.model_dump() if config.detector else None,
+        hooks_config=config.gateway.security.model_dump() if config.gateway.security else None,
     )
 
     # Shared reference for progress callbacks

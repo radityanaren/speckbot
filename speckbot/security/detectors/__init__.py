@@ -42,13 +42,20 @@ class SecurityGateway:
         self.workspace = workspace
 
         # Initialize BLOCK detector with patterns from config
+        # Support both old format (block.patterns) and new format (patterns directly)
         block_config = self.config.get("block", {})
         patterns = block_config.get("patterns", [])
+        if not patterns:
+            # New format: patterns at top level
+            patterns = self.config.get("patterns", [])
         self.block_detector = BlockDetector(patterns=patterns)
 
-        # Initialize ASK detector with tools from config
+        # Initialize ASK detector with tools from config (optional - for backward compat)
         ask_config = self.config.get("ask", {})
-        ask_tools = ask_config if isinstance(ask_config, list) else ask_config.get("tools", [])
+        if isinstance(ask_config, list):
+            ask_tools = ask_config
+        else:
+            ask_tools = ask_config.get("tools", []) if ask_config else []
         self.ask_detector = AskDetector(ask_tools=ask_tools)
 
         # Load pending confirmations from file if workspace provided
