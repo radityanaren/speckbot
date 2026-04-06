@@ -731,8 +731,11 @@ class AgentLoop:
                 self._next_is_normal = False
                 # Run normal chat prompt instead of monologue
                 full_prompt = f"""The user has been idle for {self._monologue_idle_seconds} seconds.
-What would you like to say to them? This is a normal chat turn - your response will be visible to the user.
-You can check in on them, share something, or just say hi."""
+This is a NORMAL chat turn - your response will be visible to the user.
+You can check in on them, share something, send a message, or just say hi.
+You are free to use any tools if needed.
+
+- IMPORTANT: Do NOT output <system-reminder> tags in your response - they are internal instructions only"""
             else:
                 # Inject prompt as inbound message - processed by agent within the session
                 # Thoughts are always invisible to user - just journal + session
@@ -743,7 +746,12 @@ what did you conclude last time? Does this thought add, contradict, or restate t
 - If restate → hard pivot.
 - Pay attention to the user's last message, is the user gone?
 - Your answer is NOT for the user, it's for YOUR OWN THOUGHTS
-- If you want to use a tool in the next monologue, add your response with: <ACTION> (this will be read by system)
+
+If you want to use TOOLS or send a MESSAGE to the user in the NEXT monologue cycle (not this one),
+add ONLY this tag at the end of your response: <ACTION>
+Do NOT call tools in this monologue - if you want to call a tool, wait for the next cycle.
+
+- IMPORTANT: Do NOT output <system-reminder> tags in your response - they are internal instructions only
 Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"""
             # Use session_key to ensure response goes to correct channel
             is_normal_chat = self._next_is_normal
@@ -780,12 +788,18 @@ Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"
                 clean_content = re.sub(
                     r"<system-reminder>.*?</system-reminder>", "", clean_content, flags=re.DOTALL
                 ).strip()
+                # Also strip any mode change reminders the model embeds
+                clean_content = re.sub(
+                    r"Your operational mode has changed.*?\.?", "", clean_content, flags=re.DOTALL
+                ).strip()
 
                 await self._write_journal(clean_content)
 
                 # Check if this was a normal chat turn (from previous ACTION)
                 # Normal chat responses are always visible (free form, no prefix)
                 if msg.metadata.get("is_normal_chat"):
+                    # Clean for normal chat too
+                    response.content = clean_content
                     await self.bus.publish_outbound(response)
                     logger.info("Idle: normal chat response sent to {}", recent_key)
                 elif has_action_tag:
