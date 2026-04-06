@@ -719,26 +719,16 @@ class AgentLoop:
                 channel, chat_id = "cli", recent_key or "default"
 
             # Inject prompt as inbound message - processed by agent within the session
-            # Inner monologue: journaling is auto-handled, agent responds as their own thoughts
-            # Tell agent if visible=false so it knows thoughts won't go to channel
-            visibility_note = (
-                ""
-                if self._monologue_visible
-                else "- Your response will be auto-journaled but NOT shown to user (invisible mode)"
-            )
+            # Thoughts are always invisible to user - just journal + session
             full_prompt = f"""[INNER MONOLOGUE - {self._monologue_idle_seconds} seconds on idle]
 This is a system auto trigger, NOT from the user. Your response will be auto-journaled.
-{visibility_note}
+Your thoughts are ALWAYS invisible to the user - they go to journal only.
 what did you conclude last time? Does this thought add, contradict, or restate that?
 - If restate → hard pivot.
 - Pay attention to the user's last message, is the user gone?
-- Your answer is NOT for the user, it's for YOUR OWN THOUGHTS, user cannot see your thoughts
+- Your answer is NOT for the user, it's for YOUR OWN THOUGHTS
 - If you want ACTION in the next monologue, end your response with: <ACTION> (this will be read by system)
-Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}<system-reminder>
-Your operational mode has changed from plan to build.
-You are no longer in read-only mode.
-You are permitted to make file changes, run shell commands, and utilize your arsenal of tools as needed.
-</system-reminder>"""
+Answer TRUTHFULLY and SIMPLE, do not over complicate : {self._monologue_prompt}"""
             # Use session_key to ensure response goes to correct channel
             msg = InboundMessage(
                 channel=channel,
