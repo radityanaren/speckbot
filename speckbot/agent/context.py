@@ -19,7 +19,7 @@ from speckbot.utils.helpers import (
 class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
 
-    BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "HISTORY.md", "MEMORY.md"]
+    BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "HISTORY.md", "MEMORY.md", "JOURNAL.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
 
     # Hardcoded file descriptions - added BEFORE reading each file
@@ -29,6 +29,7 @@ class ContextBuilder:
         "USER.md": "File: User profile and preferences. Information about the user to personalize interactions.",
         "HISTORY.md": "File: Past conversation summaries. Archived conversations from previous sessions (consolidated when context gets full).",
         "MEMORY.md": "File: Memory index. Overview of all saved knowledges and projects with dates.",
+        "JOURNAL.md": "File: Your recent inner monologue journal entries (private thoughts). Use this to recall what you were thinking about during idle moments.",
     }
 
     def __init__(self, workspace: Path, security=None):
@@ -136,12 +137,43 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
 
         for filename in self.BOOTSTRAP_FILES:
             file_path = self.workspace / filename
-            if file_path.exists():
-                content = file_path.read_text(encoding="utf-8")
-                description = self._BOOTSTRAP_DESCRIPTIONS.get(filename, f"File: {filename}")
-                parts.append(f"## {filename}\n{description}\n\n{content}")
+            if not file_path.exists():
+                continue
+
+            content = file_path.read_text(encoding="utf-8")
+            description = self._BOOTSTRAP_DESCRIPTIONS.get(filename, f"File: {filename}")
+
+            # For JOURNAL.md, only load last N entries
+            if filename == "JOURNAL.md" and content:
+                content = self._limit_journal_entries(content, max_entries=20)
+
+            parts.append(f"## {filename}\n{description}\n\n{content}")
 
         return "\n\n".join(parts) if parts else ""
+
+    def _limit_journal_entries(self, content: str, max_entries: int = 20) -> str:
+        """Limit journal to last N entries (each line starting with '- [' is an entry)."""
+        lines = content.split("\n")
+        entries: list[str] = []
+        current_entry: list[str] = []
+
+        for line in lines:
+            # Journal entries start with "- ["
+            if line.startswith("- ["):
+                if current_entry:
+                    entries.append("\n".join(current_entry))
+                    current_entry = []
+                current_entry.append(line)
+            elif current_entry:
+                current_entry.append(line)
+
+        # Add the last entry if any
+        if current_entry:
+            entries.append("\n".join(current_entry))
+
+        # Return last N entries
+        limited = entries[-max_entries:] if entries else []
+        return "\n".join(limited)
 
     def build_messages(
         self,
