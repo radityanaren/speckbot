@@ -163,9 +163,10 @@ you would be able to call tools on the next monologue"""
         return recent_session, recent_key
 
     def _clean_output(self, content: str) -> str:
-        """Remove all <tag> patterns from output."""
-        # Remove any <...> tags
-        cleaned = re.sub(r"<[^>]+>", "", content).strip()
+        """Remove system-reminder tags from output."""
+        cleaned = re.sub(
+            r"<system-reminder>.*?</system-reminder>", "", content, flags=re.DOTALL
+        ).strip()
         return cleaned
 
     async def handle_idle(
