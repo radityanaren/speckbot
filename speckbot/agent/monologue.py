@@ -204,7 +204,14 @@ You CAN use tools directly now if needed - no need for special tags."""
 
             # Send to user based on visible setting
             if self._visible:
-                response.content = f"💭\n{response.content}"
+                # Clean output - remove system-reminder tags before showing to user
+                clean_content = response.content
+                import re
+
+                clean_content = re.sub(
+                    r"<system-reminder>.*?</system-reminder>", "", clean_content, flags=re.DOTALL
+                ).strip()
+                response.content = f"💭\n```\n{clean_content}\n```"
                 await self.bus.publish_outbound(response)
                 logger.info("Idle: journaled and sent thought to {}", recent_key)
             else:
