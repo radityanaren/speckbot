@@ -59,26 +59,18 @@ def _flush_pending_tty_input() -> None:
         fd = sys.stdin.fileno()
         if not os.isatty(fd):
             return
-    except Exception:
-        return
-
-    try:
-        import termios
-
-        termios.tcflush(fd, termios.TCIFLUSH)
-        return
+        # Try termios first (Unix/Linux)
+        try:
+            import termios
+            termios.tcflush(fd, termios.TCIFLUSH)
+        except (ImportError, OSError):
+            # Fallback: select + read for portability
+            while True:
+                ready, _, _ = select.select([fd], [], [], 0)
+                if not ready or not os.read(fd, 4096):
+                    break
     except Exception:
         pass
-
-    try:
-        while True:
-            ready, _, _ = select.select([fd], [], [], 0)
-            if not ready:
-                break
-            if not os.read(fd, 4096):
-                break
-    except Exception:
-        return
 
 
 def _restore_terminal() -> None:
@@ -121,15 +113,20 @@ def _make_console() -> Console:
     return Console(file=sys.stdout)
 
 
-def _render_interactive_ansi(render_fn) -> str:
-    """Render Rich output to ANSI so prompt_toolkit can print it safely."""
+def _render_agent_response_ansi(response: str, render_markdown: bool) -> str:
+    """Render agent response to ANSI, safe for prompt_toolkit."""
+    content = response or ""
+    body = Markdown(content) if render_markdown else Text(content)
     ansi_console = Console(
         force_terminal=True,
         color_system=console.color_system or "standard",
         width=console.width,
     )
     with ansi_console.capture() as capture:
-        render_fn(ansi_console)
+        ansi_console.print()
+        ansi_console.print(f"[cyan]{__logo__} SpeckBot[/cyan]")
+        ansi_console.print(body)
+        ansi_console.print()
     return capture.get()
 
 
@@ -148,8 +145,14 @@ async def _print_interactive_line(text: str) -> None:
     """Print async interactive updates with prompt_toolkit-safe Rich styling."""
 
     def _write() -> None:
-        ansi = _render_interactive_ansi(lambda c: c.print(f"  [dim]↳ {text}[/dim]"))
-        print_formatted_text(ANSI(ansi), end="")
+        ansi_console = Console(
+            force_terminal=True,
+            color_system=console.color_system or "standard",
+            width=console.width,
+        )
+        with ansi_console.capture() as capture:
+            ansi_console.print(f"  [dim]↳ {text}[/dim]")
+        print_formatted_text(ANSI(capture.get()), end="")
 
     await run_in_terminal(_write)
 
@@ -158,16 +161,7 @@ async def _print_interactive_response(response: str, render_markdown: bool) -> N
     """Print async interactive replies with prompt_toolkit-safe Rich styling."""
 
     def _write() -> None:
-        content = response or ""
-        ansi = _render_interactive_ansi(
-            lambda c: (
-                c.print(),
-                c.print(f"[cyan]{__logo__} SpeckBot[/cyan]"),
-                c.print(Markdown(content) if render_markdown else Text(content)),
-                c.print(),
-            )
-        )
-        print_formatted_text(ANSI(ansi), end="")
+        print_formatted_text(ANSI(_render_agent_response_ansi(response, render_markdown)), end="")
 
     await run_in_terminal(_write)
 
