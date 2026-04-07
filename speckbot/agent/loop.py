@@ -135,6 +135,9 @@ class AgentLoop:
         # Set the process callback for monologue system (after tools is initialized)
         self.monologue.set_process_callback(self._process_message)
 
+        # Initialize message handler (separated logic from orchestration)
+        self._message_handler = MessageHandler(self)
+
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
         allowed_dir = self.workspace if self.restrict_to_workspace else None
@@ -428,159 +431,12 @@ class AgentLoop:
         session_key: str | None = None,
         on_progress: Callable[..., Awaitable[None]] | None = None,
     ) -> OutboundMessage | None:
-        """Process a single inbound message and return the response."""
-        # System messages: parse origin from chat_id ("channel:chat_id")
-        if msg.channel == "system":
-            channel, chat_id = (
-                msg.chat_id.split(":", 1) if ":" in msg.chat_id else ("cli", msg.chat_id)
-            )
-            logger.info("Processing system message from {}", msg.sender_id)
-            key = f"{channel}:{chat_id}"
-            session = self.sessions.get_or_create(key)
-            history = session.get_history(max_messages=0)
+        """Process a single inbound message and return the response.
 
-            # Subagent results should be assistant role, other system messages use user role
-            current_role = "assistant" if msg.sender_id == "subagent" else "user"
-            messages = self.context.build_messages(
-                history=history,
-                current_message=msg.content,
-                channel=channel,
-                chat_id=chat_id,
-                current_role=current_role,
-                session_key=msg.session_key,
-                user_id=msg.user_id,
-                username=msg.username,
-            )
-            final_content, _, all_msgs = await self._run_agent_loop(
-                messages, session_key=msg.session_key
-            )
-            self._save_turn(session, all_msgs, 1 + len(history))
-            self.sessions.save(session)
-            self._schedule_background(self.memory_consolidator.maybe_consolidate_by_tokens(session))
-            return OutboundMessage(
-                channel=channel,
-                chat_id=chat_id,
-                content=final_content or "Background task completed.",
-            )
-
-        preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
-        logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
-
-        key = session_key or msg.session_key
-        session = self.sessions.get_or_create(key)
-
-        # Slash commands
-        cmd = msg.content.strip().lower()
-        if cmd == "/new":
-            snapshot = session.messages[session.last_consolidated :]
-            session.clear()
-            self.sessions.save(session)
-            self.sessions.invalidate(session.key)
-
-            if snapshot:
-                self._schedule_background(self.memory_consolidator.archive_messages(snapshot))
-
-            return OutboundMessage(
-                channel=msg.channel, chat_id=msg.chat_id, content="New session started."
-            )
-        if cmd == "/help":
-            from speckbot.agent.definitions import get_help_text
-
-            return OutboundMessage(
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                content=get_help_text(),
-            )
-        if cmd == "/memories":
-            # Get memory summary directly from store
-            store = self.memory_consolidator.store
-            knowledges = store.list_knowledges()
-            projects = store.list_projects()
-
-            lines = ["🐜 SpeckBot Memory", ""]
-
-            if knowledges:
-                lines.append("📚 Knowledges:")
-                for topic in knowledges:
-                    files = store.list_knowledge_files(topic)
-                    if files:
-                        lines.append(f"  • {topic} ({', '.join(files)})")
-                    else:
-                        lines.append(f"  • {topic}")
-            else:
-                lines.append("📚 Knowledges: (empty)")
-
-            lines.append("")
-
-            if projects:
-                lines.append("📁 Projects:")
-                for topic in projects:
-                    files = store.list_project_files(topic)
-                    if files:
-                        lines.append(f"  • {topic} ({', '.join(files)})")
-                    else:
-                        lines.append(f"  • {topic}")
-            else:
-                lines.append("📁 Projects: (empty)")
-
-            return OutboundMessage(
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                content="\n".join(lines),
-            )
-        await self.memory_consolidator.maybe_consolidate_by_tokens(session)
-
-        self._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"))
-        if message_tool := self.tools.get("message"):
-            if isinstance(message_tool, MessageTool):
-                message_tool.start_turn()
-
-        history = session.get_history(max_messages=0)
-        initial_messages = self.context.build_messages(
-            history=history,
-            current_message=msg.content,
-            media=msg.media if msg.media else None,
-            channel=msg.channel,
-            chat_id=msg.chat_id,
-            session_key=msg.session_key,
-            user_id=msg.user_id,
-            username=msg.username,
-        )
-
-        async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
-            await self.bus.publish_outbound(
-                OutboundMessage(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                    content=content,
-                    progress_type="tool_hint" if tool_hint else "thought",
-                )
-            )
-
-        final_content, _, all_msgs = await self._run_agent_loop(
-            initial_messages,
-            on_progress=on_progress or _bus_progress,
-            session_key=session.key if session else None,
-        )
-
-        if final_content is None:
-            final_content = "I've completed processing but have no response to give."
-
-        self._save_turn(session, all_msgs, 1 + len(history))
-        self.sessions.save(session)
-        self._schedule_background(self.memory_consolidator.maybe_consolidate_by_tokens(session))
-
-        if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
-            return None
-
-        preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
-        logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
-        return OutboundMessage(
-            channel=msg.channel,
-            chat_id=msg.chat_id,
-            content=final_content,
-            metadata=msg.metadata or {},
-        )
+        Delegates to MessageHandler for the actual processing logic.
+        AgentLoop is the orchestrator, MessageHandler does the work.
+        """
+        return await self._message_handler.process(msg, session_key, on_progress)
 
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
         """Save new-turn messages into session, truncating large tool results."""
@@ -650,3 +506,277 @@ class AgentLoop:
     def _restart_idle_timer(self) -> None:
         """Restart the idle timer."""
         self.monologue.restart_idle_timer()
+
+
+# =============================================================================
+# MessageHandler - Handles message processing logic (extracted from _process_message)
+# =============================================================================
+
+
+class MessageHandler:
+    """
+    Handles the logic for processing messages.
+
+    Separated from AgentLoop to keep the orchestrator clean.
+    AgentLoop dispatches, MessageHandler does the work.
+    """
+
+    def __init__(self, agent: "AgentLoop"):
+        self._agent = agent
+
+    async def process(
+        self,
+        msg: InboundMessage,
+        session_key: str | None = None,
+        on_progress: Callable[..., Awaitable[None]] | None = None,
+    ) -> OutboundMessage | None:
+        """Process a single inbound message and return the response."""
+        # System messages: parse origin from chat_id ("channel:chat_id")
+        if msg.channel == "system":
+            return await self._handle_system_message(msg)
+
+        # Slash commands
+        cmd = msg.content.strip().lower()
+        if slash_response := self._handle_slash_command(msg, cmd):
+            return slash_response
+
+        # Normal user message
+        return await self._handle_user_message(msg, session_key, on_progress)
+
+    async def _handle_system_message(self, msg: InboundMessage) -> OutboundMessage:
+        """Handle messages from subagents (channel='system')."""
+        channel, chat_id = msg.chat_id.split(":", 1) if ":" in msg.chat_id else ("cli", msg.chat_id)
+        logger.info("Processing system message from {}", msg.sender_id)
+
+        key = f"{channel}:{chat_id}"
+        session = self._agent.sessions.get_or_create(key)
+        history = session.get_history(max_messages=0)
+
+        # Subagent results should be assistant role, other system messages use user role
+        current_role = "assistant" if msg.sender_id == "subagent" else "user"
+        messages = self._agent.context.build_messages(
+            history=history,
+            current_message=msg.content,
+            channel=channel,
+            chat_id=chat_id,
+            current_role=current_role,
+            session_key=msg.session_key,
+            user_id=msg.user_id,
+            username=msg.username,
+        )
+
+        final_content, _, all_msgs = await self._agent._run_agent_loop(
+            messages, session_key=msg.session_key
+        )
+
+        self._save_turn(session, all_msgs, 1 + len(history))
+        self._agent.sessions.save(session)
+        self._agent._schedule_background(
+            self._agent.memory_consolidator.maybe_consolidate_by_tokens(session)
+        )
+
+        return OutboundMessage(
+            channel=channel,
+            chat_id=chat_id,
+            content=final_content or "Background task completed.",
+        )
+
+    def _handle_slash_command(self, msg: InboundMessage, cmd: str) -> OutboundMessage | None:
+        """Handle slash commands: /new, /help, /memories."""
+        key = msg.session_key
+        session = self._agent.sessions.get_or_create(key)
+
+        if cmd == "/new":
+            snapshot = session.messages[session.last_consolidated :]
+            session.clear()
+            self._agent.sessions.save(session)
+            self._agent.sessions.invalidate(session.key)
+
+            if snapshot:
+                self._agent._schedule_background(
+                    self._agent.memory_consolidator.archive_messages(snapshot)
+                )
+
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content="New session started."
+            )
+
+        if cmd == "/help":
+            from speckbot.agent.definitions import get_help_text
+
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=get_help_text(),
+            )
+
+        if cmd == "/memories":
+            store = self._agent.memory_consolidator.store
+            knowledges = store.list_knowledges()
+            projects = store.list_projects()
+
+            lines = ["🐜 SpeckBot Memory", ""]
+
+            if knowledges:
+                lines.append("📚 Knowledges:")
+                for topic in knowledges:
+                    files = store.list_knowledge_files(topic)
+                    if files:
+                        lines.append(f"  • {topic} ({', '.join(files)})")
+                    else:
+                        lines.append(f"  • {topic}")
+            else:
+                lines.append("📚 Knowledges: (empty)")
+
+            lines.append("")
+
+            if projects:
+                lines.append("📁 Projects:")
+                for topic in projects:
+                    files = store.list_project_files(topic)
+                    if files:
+                        lines.append(f"  • {topic} ({', '.join(files)})")
+                    else:
+                        lines.append(f"  • {topic}")
+            else:
+                lines.append("📁 Projects: (empty)")
+
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="\n".join(lines),
+            )
+
+        return None  # Not a slash command
+
+    async def _handle_user_message(
+        self,
+        msg: InboundMessage,
+        session_key: str | None = None,
+        on_progress: Callable[..., Awaitable[None]] | None = None,
+    ) -> OutboundMessage | None:
+        """Handle normal user messages."""
+        preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
+        logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
+
+        key = session_key or msg.session_key
+        session = self._agent.sessions.get_or_create(key)
+
+        # Run memory consolidation before processing
+        await self._agent.memory_consolidator.maybe_consolidate_by_tokens(session)
+
+        # Set tool context
+        self._agent._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"))
+        if message_tool := self._agent.tools.get("message"):
+            if isinstance(message_tool, MessageTool):
+                message_tool.start_turn()
+
+        # Build context with history
+        history = session.get_history(max_messages=0)
+        initial_messages = self._agent.context.build_messages(
+            history=history,
+            current_message=msg.content,
+            media=msg.media if msg.media else None,
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            session_key=msg.session_key,
+            user_id=msg.user_id,
+            username=msg.username,
+        )
+
+        # Progress callback
+        async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
+            await self._agent.bus.publish_outbound(
+                OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=content,
+                    progress_type="tool_hint" if tool_hint else "thought",
+                )
+            )
+
+        # Run the agent
+        final_content, _, all_msgs = await self._agent._run_agent_loop(
+            initial_messages,
+            on_progress=on_progress or _bus_progress,
+            session_key=session.key if session else None,
+        )
+
+        if final_content is None:
+            final_content = "I've completed processing but have no response to give."
+
+        # Save to session
+        self._save_turn(session, all_msgs, 1 + len(history))
+        self._agent.sessions.save(session)
+        self._agent._schedule_background(
+            self._agent.memory_consolidator.maybe_consolidate_by_tokens(session)
+        )
+
+        # Check if message was sent via tool (don't duplicate)
+        if (
+            (mt := self._agent.tools.get("message"))
+            and isinstance(mt, MessageTool)
+            and mt._sent_in_turn
+        ):
+            return None
+
+        preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
+        logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
+
+        return OutboundMessage(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            content=final_content,
+            metadata=msg.metadata or {},
+        )
+
+    def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
+        """Save new-turn messages into session, truncating large tool results."""
+        from datetime import datetime
+
+        for m in messages[skip:]:
+            entry = dict(m)
+            role, content = entry.get("role"), entry.get("content")
+            if role == "assistant" and not content and not entry.get("tool_calls"):
+                continue  # skip empty assistant messages — they poison session context
+            if (
+                role == "tool"
+                and isinstance(content, str)
+                and len(content) > self._agent._TOOL_RESULT_MAX_CHARS
+            ):
+                entry["content"] = (
+                    content[: self._agent._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
+                )
+            elif role == "user":
+                if isinstance(content, str) and content.startswith(
+                    ContextBuilder._RUNTIME_CONTEXT_TAG
+                ):
+                    # Strip the runtime-context prefix, keep only the user text.
+                    parts = content.split("\n\n", 1)
+                    if len(parts) > 1 and parts[1].strip():
+                        entry["content"] = parts[1]
+                    else:
+                        continue
+                if isinstance(content, list):
+                    filtered = []
+                    for c in content:
+                        if (
+                            c.get("type") == "text"
+                            and isinstance(c.get("text"), str)
+                            and c["text"].startswith(ContextBuilder._RUNTIME_CONTEXT_TAG)
+                        ):
+                            continue  # Strip runtime context from multimodal messages
+                        if c.get("type") == "image_url" and c.get("image_url", {}).get(
+                            "url", ""
+                        ).startswith("data:image/"):
+                            path = (c.get("_meta") or {}).get("path", "")
+                            placeholder = f"[image: {path}]" if path else "[image]"
+                            filtered.append({"type": "text", "text": placeholder})
+                        else:
+                            filtered.append(c)
+                    if not filtered:
+                        continue
+                    entry["content"] = filtered
+            entry.setdefault("timestamp", datetime.now().isoformat())
+            session.messages.append(entry)
+        session.updated_at = datetime.now()
