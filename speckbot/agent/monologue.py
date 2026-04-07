@@ -106,17 +106,16 @@ class MonologueSystem:
     def _build_prompt(self) -> str:
         """Build the prompt based on mode."""
         return f"""[SYSTEM - INNER MONOLOGUE]
-You have been idle for {self._idle_seconds} seconds.
-This message is automatic.
+User has been gone for {self._idle_seconds} seconds.
 
 RULES:
-1. Think privately - your response goes to journal only, user cannot see it.
-2. If restating previous thought → hard pivot.
-3. Check user's last message - are they gone or coming back?
+1. DO NOT message user in this answer, they won't see it, you need to call tool for that.
+2. This Answer should be for your OWN THOUGHT, NOT USER.
+3. If restating previous thought → hard pivot.
 
-{self._prompt}
+ANSWER THIS :{self._prompt}
 
-You CAN use tools directly now if needed - no need for special tags."""
+You CAN use tools but ask for permission to the upstream message using message tool."""
 
     def _find_recent_session(self) -> tuple[Session | None, str | None]:
         """Find the most recently active session that has recent user activity."""
