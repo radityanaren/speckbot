@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -165,10 +166,6 @@ IF you want to message user or use tools(in the next monologue), add this to the
 
         return recent_session, recent_key
 
-    def _clean_output(self, content: str) -> str:
-        """Clean output for display."""
-        return content.strip()
-
     async def handle_idle(
         self,
         process_callback,  # AsyncFunction(msg, session_key) -> OutboundMessage | None
@@ -229,7 +226,6 @@ IF you want to message user or use tools(in the next monologue), add this to the
                     logger.info("Idle: extracted ACTION content: {}", action_content[:100])
 
             clean_content = response.content.replace("<ACTION>", "").strip()
-            clean_content = self._clean_output(clean_content)
 
             # Always journal
             await self.write_journal(clean_content)
