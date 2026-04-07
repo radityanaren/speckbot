@@ -268,6 +268,10 @@ you would be able to call tools on the next monologue"""
 
         except asyncio.CancelledError:
             pass  # Expected when user sends a message
+        else:
+            # Restart timer after completion (unless cancelled)
+            if self._enabled and self._running:
+                self.restart_idle_timer()
 
     async def on_user_message(self) -> None:
         """Called when user sends a message - cancel pending normal chat."""
