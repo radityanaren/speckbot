@@ -100,8 +100,6 @@ class AgentLoop:
             workspace=workspace,
             config=monologue_config,
         )
-        # Set the process callback for monologue system
-        self.monologue.set_process_callback(self._process_message)
 
         self.subagents = SubagentManager(
             provider=provider,
@@ -122,6 +120,7 @@ class AgentLoop:
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._background_tasks: list[asyncio.Task] = []
         self._processing_lock = asyncio.Lock()
+        self.tools = ToolRegistry(hooks_config, workspace=workspace, security=self.security)
         self.memory_consolidator = MemoryConsolidator(
             workspace=workspace,
             provider=provider,
@@ -132,6 +131,9 @@ class AgentLoop:
             get_tool_definitions=self.tools.get_definitions,
         )
         self._register_default_tools()
+
+        # Set the process callback for monologue system (after tools is initialized)
+        self.monologue.set_process_callback(self._process_message)
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
