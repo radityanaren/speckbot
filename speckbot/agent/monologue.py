@@ -9,8 +9,10 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from speckbot.bus.events import InboundMessage
+
 if TYPE_CHECKING:
-    from speckbot.bus.events import InboundMessage, OutboundMessage
+    from speckbot.bus.events import OutboundMessage
     from speckbot.bus.queue import MessageBus
     from speckbot.session.manager import Session, SessionManager
 
