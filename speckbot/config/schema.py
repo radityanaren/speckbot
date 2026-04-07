@@ -51,6 +51,16 @@ class AgentsConfig(Base):
     monologue_prompt: str = "Hey, been a while — what are you working on?"
     monologue_visible: bool = True  # True = show in channel, False = journal only
 
+    @property
+    def monologue(self) -> "MonologueConfig":
+        """Return MonologueConfig for backward compatibility."""
+        return MonologueConfig(
+            enabled=self.monologue_enabled,
+            idle_seconds=self.monologue_idle_seconds,
+            prompt=self.monologue_prompt,
+            visible=self.monologue_visible,
+        )
+
 
 # ==================== DREAM ====================
 
@@ -328,3 +338,12 @@ class WebToolsConfig(Base):
 
     proxy: str | None = None
     search: WebSearchConfig = Field(default_factory=WebSearchConfig)
+
+
+class MonologueConfig(Base):
+    """Monologue system configuration (deprecated, use AgentsConfig monologue_* fields)."""
+
+    enabled: bool = False
+    idle_seconds: int = 300
+    prompt: str = "Hey, been a while — what are you working on?"
+    visible: bool = True
