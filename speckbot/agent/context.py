@@ -92,9 +92,7 @@ Skills with available="false" need dependencies installed first - you can try in
 SpeckBot has a security system that protects against dangerous operations:
 - BLOCK: Certain patterns in commands are automatically blocked. If a tool returns "[Output filtered by security]", the output was blocked for safety, don't force it, you can't read it."""
 
-        return f"""# SpeckBot 🐜
-
-You are SpeckBot, a helpful personal AI assistant.
+        return f"""# You are a helpful AI agent.
 
 ## Runtime
 {runtime}

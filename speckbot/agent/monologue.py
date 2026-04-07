@@ -41,6 +41,7 @@ class MonologueSystem:
         self._running = False
         self._idle_timer_task: asyncio.Task | None = None
         self._next_is_normal: bool = False  # If True, next idle is normal chat (from ACTION)
+        self._pending_action: str | None = None  # Content of previous ACTION tag
         self._process_callback = None  # Callback to process messages
 
         # Config
@@ -106,8 +107,15 @@ class MonologueSystem:
 
     def _build_prompt(self, is_normal_chat: bool) -> str:
         """Build the prompt based on mode."""
-        if is_normal_chat:
-            return f"""The user has been idle for {self._idle_seconds} seconds.
+        if is_normal_chat or self._pending_action:
+            # Normal chat after ACTION - use the action content as context
+            if self._pending_action:
+                action_content = self._pending_action
+                self._pending_action = None  # Clear after use
+                return f"""The user has been idle. Last action you wanted to take: {action_content}
+Now execute that action - use tools to do it, or send a message to the user."""
+            else:
+                return f"""The user has been idle for {self._idle_seconds} seconds.
 This is a normal chat turn - your response will be visible to the user.
 You can check in on them, share something, or just say hi.
 You are free to use any tools if needed."""
@@ -185,7 +193,7 @@ IF you want to message user or use tools(in the next monologue), add this to the
             channel, chat_id = "cli", recent_key or "default"
 
         # Check if this should be a normal chat (triggered by ACTION from previous monologue)
-        is_normal_chat = self._next_is_normal
+        is_normal_chat = self._next_is_normal or self._pending_action is not None
         if is_normal_chat:
             self._next_is_normal = False  # Reset flag
 
@@ -215,6 +223,17 @@ IF you want to message user or use tools(in the next monologue), add this to the
         # Handle the response
         if response:
             has_action_tag = "<ACTION>" in response.content
+
+            # Extract ACTION content before cleaning
+            action_content = None
+            if has_action_tag:
+                import re
+
+                action_match = re.search(r"<ACTION>(.*?)</ACTION>", response.content, re.DOTALL)
+                if action_match:
+                    action_content = action_match.group(1).strip()
+                    logger.info("Idle: extracted ACTION content: {}", action_content[:100])
+
             clean_content = response.content.replace("<ACTION>", "").strip()
             clean_content = self._clean_output(clean_content)
 
@@ -237,12 +256,15 @@ IF you want to message user or use tools(in the next monologue), add this to the
                 logger.info("Idle: normal chat response sent to {}", recent_key)
 
             elif has_action_tag:
-                # ACTION tag found - send to user with ⚡ + markdown
+                # ACTION tag found - store action content for next cycle
+                self._pending_action = action_content
+                # Send current response to user (if visible) but next cycle is execution
                 response.content = f"⚡\n```\n{clean_content}\n```"
                 await self.bus.publish_outbound(response)
-                # Set flag for next cycle
-                self._next_is_normal = True
-                logger.info("Idle: ACTION sent (⚡), will trigger normal chat on next idle")
+                logger.info(
+                    "Idle: ACTION found, will execute '{}' on next idle",
+                    action_content[:50] if action_content else "empty",
+                )
 
             elif self._visible:
                 # Thought visible to user
@@ -288,7 +310,8 @@ IF you want to message user or use tools(in the next monologue), add this to the
                 self.restart_idle_timer()
 
     async def on_user_message(self) -> None:
-        """Called when user sends a message - cancel pending normal chat."""
-        if self._next_is_normal:
-            logger.info("User message received, cancelling pending normal chat")
-            self._next_is_normal = False
+        """Called when user sends a message - cancel pending actions."""
+        if self._next_is_normal or self._pending_action:
+            logger.info("User message received, cancelling pending action")
+        self._next_is_normal = False
+        self._pending_action = None
