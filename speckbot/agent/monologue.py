@@ -122,12 +122,10 @@ RULES:
 3. Check the user's last message. Are they gone? Are they coming back?
 4. Do NOT message the user. Do NOT use tools. Just think.
 
-THEN ANSWER THIS:
+ANSWER THIS:
 {self._prompt}
 
-IF anything came up worth acting on, end with:
-<ACTION> what you want to do and why </ACTION>
-you would be able to call tools on the next monologue"""
+IF you want to message user or use tools(in the next monologue), add this to the end of the message: </ACTION>"""
 
     def _find_recent_session(self) -> tuple[Session | None, str | None]:
         """Find the most recently active session that has recent user activity."""
