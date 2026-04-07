@@ -186,20 +186,12 @@ You CAN use tools but ask for permission to the upstream message using message t
         )
 
         # Process through agent
-        logger.info("Idle: calling process_callback...")
         response = await process_callback(msg, recent_key)
-        logger.info("Idle: process_callback returned: {}", response)
 
         # Handle the response
         if response:
             # Always journal the response
             await self.write_journal(response.content)
-
-            logger.info(
-                "Idle: visible={}, has_content={}",
-                self._visible,
-                bool(response.content),
-            )
 
             # Send to user based on visible setting
             if self._visible:
