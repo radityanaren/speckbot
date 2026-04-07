@@ -366,7 +366,7 @@ class AgentLoop:
         """Process a message under the global lock. Restart idle timer after saving to session."""
         async with self._processing_lock:
             # If user sends a message, cancel any pending normal chat from ACTION
-            self.monologue.on_user_message()
+            await self.monologue.on_user_message()
 
             try:
                 response = await self._process_message(msg)
