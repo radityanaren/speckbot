@@ -481,7 +481,7 @@ class AgentLoop:
                 channel=msg.channel, chat_id=msg.chat_id, content="New session started."
             )
         if cmd == "/help":
-            from speckbot.agent.commands import get_help_text
+            from speckbot.agent.definitions import get_help_text
 
             return OutboundMessage(
                 channel=msg.channel,

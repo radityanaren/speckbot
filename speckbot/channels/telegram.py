@@ -182,7 +182,7 @@ class TelegramChannel(BaseChannel):
     display_name = "Telegram"
 
     # Commands registered with Telegram's command menu
-    from speckbot.agent.commands import TELEGRAM_BOT_COMMANDS
+    from speckbot.agent.definitions import TELEGRAM_BOT_COMMANDS
 
     BOT_COMMANDS = [BotCommand(name, desc) for name, desc in TELEGRAM_BOT_COMMANDS]
 
