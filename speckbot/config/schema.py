@@ -61,6 +61,14 @@ class AgentsConfig(Base):
             visible=self.monologue_visible,
         )
 
+    @property
+    def heartbeat(self) -> "HeartbeatConfig":
+        """Return HeartbeatConfig for backward compatibility."""
+        return HeartbeatConfig(
+            enabled=self.heartbeat_enabled,
+            interval_seconds=self.heartbeat_interval_seconds,
+        )
+
 
 # ==================== DREAM ====================
 
@@ -354,3 +362,10 @@ class MonologueConfig(Base):
     idle_seconds: int = 300
     prompt: str = "Hey, been a while — what are you working on?"
     visible: bool = True
+
+
+class HeartbeatConfig(Base):
+    """Heartbeat service configuration (deprecated, use AgentsConfig heartbeat_* fields)."""
+
+    enabled: bool = True
+    interval_seconds: int = 30 * 60
