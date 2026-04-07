@@ -4,76 +4,34 @@ All bot commands are defined here in one place. Channels and the agent
 import from here instead of duplicating command strings.
 """
 
-from dataclasses import dataclass
-
-
-# =============================================================================
-# Command Definitions
-# =============================================================================
-
-
-@dataclass
-class Command:
-    """A bot command definition."""
-
-    name: str  # e.g., "/stop"
-    description: str  # e.g., "Stop the current task"
-    help_text: str  # e.g., "/stop — Stop the current task"
-
-
-# All commands - one source of truth
-COMMANDS: dict[str, Command] = {
-    "stop": Command(
-        name="/stop",
-        description="Stop the current task",
-        help_text="/stop — Stop the current task",
-    ),
-    "restart": Command(
-        name="/restart",
-        description="Restart SpeckBot",
-        help_text="/restart — Restart the bot",
-    ),
-    "memories": Command(
-        name="/memories",
-        description="Show saved memories",
-        help_text="/memories — Show saved memories",
-    ),
-    "help": Command(
-        name="/help",
-        description="Show available commands",
-        help_text="/help — Show available commands",
-    ),
+# Single source of truth: command_name -> description
+_COMMANDS = {
+    "stop": "Stop the current task",
+    "restart": "Restart SpeckBot",
+    "memories": "Show saved memories",
+    "help": "Show available commands",
 }
-
-
-# =============================================================================
-# Help Text
-# =============================================================================
-
-# Telegram Bot Commands (for /setcommands API)
-TELEGRAM_BOT_COMMANDS = [
-    ("stop", "Stop the current task"),
-    ("restart", "Restart SpeckBot"),
-    ("memories", "Show saved memories"),
-    ("help", "Show available commands"),
-]
 
 
 def get_help_text() -> str:
     """Get the help text for display."""
     lines = ["🐜 SpeckBot commands:"]
-    for cmd in COMMANDS.values():
-        lines.append(cmd.help_text)
+    for cmd_name, description in _COMMANDS.items():
+        lines.append(f"/{cmd_name} — {description}")
     return "\n".join(lines)
 
 
-def get_command_by_name(name: str) -> Command | None:
-    """Get a command by its name (with or without slash)."""
-    # Remove leading slash if present
+def get_command_by_name(name: str) -> str | None:
+    """Get a command description by its name (with or without slash)."""
     key = name.lstrip("/")
-    return COMMANDS.get(key)
+    return _COMMANDS.get(key)
 
 
 def get_supported_commands() -> list[str]:
     """Get list of supported command names."""
-    return list(COMMANDS.keys())
+    return list(_COMMANDS.keys())
+
+
+# Telegram Bot Commands (for /setcommands API)
+# Dynamically derived from _COMMANDS to avoid duplication
+TELEGRAM_BOT_COMMANDS = list(_COMMANDS.items())

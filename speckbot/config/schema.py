@@ -38,28 +38,18 @@ class AgentDefaults(Base):
     reasoning_effort: str | None = None
 
 
-class HeartbeatConfig(Base):
-    """Heartbeat service configuration."""
-
-    enabled: bool = True
-    interval_seconds: int = 30 * 60
-
-
-class MonologueConfig(Base):
-    """Monologue system - time-triggered prompt to active session."""
-
-    enabled: bool = False
-    idle_seconds: int = 300
-    prompt: str = "Hey, been a while — what are you working on?"
-    visible: bool = True  # True = show in channel, False = journal only
-
-
 class AgentsConfig(Base):
     """Agent configuration with heartbeat and monologue."""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
-    heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
-    monologue: MonologueConfig = Field(default_factory=MonologueConfig)
+    # Heartbeat service configuration
+    heartbeat_enabled: bool = True
+    heartbeat_interval_seconds: int = 30 * 60
+    # Monologue system - time-triggered prompt to active session
+    monologue_enabled: bool = False
+    monologue_idle_seconds: int = 300
+    monologue_prompt: str = "Hey, been a while — what are you working on?"
+    monologue_visible: bool = True  # True = show in channel, False = journal only
 
 
 # ==================== DREAM ====================
@@ -154,18 +144,10 @@ class WebSearchConfig(Base):
     max_results: int = 5
 
 
-class WebToolsConfig(Base):
-    """Web tools configuration."""
+class TranscriptionConfig(Base):
+    """Audio transcription via Groq Whisper."""
 
-    proxy: str | None = None
-    search: WebSearchConfig = Field(default_factory=WebSearchConfig)
-
-
-class ExecToolConfig(Base):
-    """Shell exec tool configuration."""
-
-    timeout: int = 60
-    path_append: str = ""
+    groq_api_key: str = ""
 
 
 class MCPServerConfig(Base):
@@ -179,12 +161,6 @@ class MCPServerConfig(Base):
     headers: dict[str, str] = Field(default_factory=dict)
     tool_timeout: int = 30
     enabled_tools: list[str] = Field(default_factory=lambda: ["*"])
-
-
-class TranscriptionConfig(Base):
-    """Audio transcription via Groq Whisper."""
-
-    groq_api_key: str = ""
 
 
 def _default_mcp_servers() -> dict[str, MCPServerConfig]:
@@ -201,9 +177,18 @@ def _default_mcp_servers() -> dict[str, MCPServerConfig]:
 class ToolsConfig(Base):
     """Tools configuration."""
 
-    web: WebToolsConfig = Field(default_factory=WebToolsConfig)
-    exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
-    transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
+    # Web tools
+    web_proxy: str | None = None
+    web_search_provider: str = "brave"
+    web_search_api_key: str = ""
+    web_search_base_url: str = ""
+    web_search_max_results: int = 5
+    # Shell exec tool
+    exec_timeout: int = 60
+    exec_path_append: str = ""
+    # Transcription
+    transcription_groq_api_key: str = ""
+    # MCP
     restrict_to_workspace: bool = False
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=_default_mcp_servers)
 
