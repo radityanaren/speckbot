@@ -203,21 +203,8 @@ You CAN use tools but ask for permission to the upstream message using message t
 
             # Send to user based on visible setting
             if self._visible:
-                # Clean output - remove OpenCode system tags before showing to user
-                clean_content = response.content
-                import re
-
-                # Remove <system-reminder>...</system-reminder>
-                clean_content = re.sub(
-                    r"<system-reminder>.*?</system-reminder>", "", clean_content, flags=re.DOTALL
-                ).strip()
-                # Remove "Your operational mode has changed..." text
-                clean_content = re.sub(
-                    r"Your operational mode has changed.*?(?=\n|\.|$)", "", clean_content
-                ).strip()
-                response.content = f"💭\n```\n{clean_content}\n```"
+                response.content = f"💭\n```\n{response.content}\n```"
                 await self.bus.publish_outbound(response)
-                logger.info("Idle: journaled and sent thought to {}", recent_key)
             else:
                 logger.info("Idle: journaled (invisible) to {}", recent_key)
 
