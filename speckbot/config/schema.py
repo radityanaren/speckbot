@@ -291,3 +291,17 @@ class Config(BaseSettings):
         return None
 
     model_config = ConfigDict(env_prefix="SPECKBOT_", env_nested_delimiter="__")
+
+
+# ==================== BACKWARD COMPATIBILITY ALIASES ====================
+# These classes were flattened into ToolsConfig but kept as aliases for imports
+class ExecToolConfig(Base):
+    """Shell exec tool configuration (deprecated, use ToolsConfig.exec_* fields)."""
+    timeout: int = 60
+    path_append: str = ""
+
+
+class WebToolsConfig(Base):
+    """Web tools configuration (deprecated, use ToolsConfig.web_* fields)."""
+    proxy: str | None = None
+    search: WebSearchConfig = Field(default_factory=WebSearchConfig)
