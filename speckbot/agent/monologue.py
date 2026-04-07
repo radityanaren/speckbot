@@ -167,10 +167,13 @@ IF you want to message user or use tools(in the next monologue), add this to the
         return recent_session, recent_key
 
     def _clean_output(self, content: str) -> str:
-        """Remove system-reminder tags from output."""
+        """Remove system-reminder and other metadata tags from output."""
+        # Remove <system-reminder>...</system-reminder> tags
         cleaned = re.sub(
             r"<system-reminder>.*?</system-reminder>", "", content, flags=re.DOTALL
         ).strip()
+        # Also remove any standalone <system-reminder> without closing tag
+        cleaned = re.sub(r"<system-reminder>.*", "", cleaned).strip()
         return cleaned
 
     async def handle_idle(
