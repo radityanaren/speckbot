@@ -154,6 +154,10 @@ you would be able to call tools on the next monologue"""
         cleaned = re.sub(
             r"<system-reminder>.*?</system-reminder>", "", content, flags=re.DOTALL
         ).strip()
+        # Also clean operational mode reminders
+        cleaned = re.sub(
+            r"Your operational mode has changed.*", "", cleaned, flags=re.DOTALL
+        ).strip()
         return cleaned
 
     async def handle_idle(
@@ -197,7 +201,9 @@ you would be able to call tools on the next monologue"""
         )
 
         # Process through agent
+        logger.info("Idle: calling process_callback...")
         response = await process_callback(msg, recent_key)
+        logger.info("Idle: process_callback returned: {}", response)
 
         # Handle the response
         if response:
@@ -209,10 +215,11 @@ you would be able to call tools on the next monologue"""
             await self.write_journal(clean_content)
 
             logger.info(
-                "Idle: is_normal_chat={}, has_action={}, visible={}",
+                "Idle: is_normal_chat={}, has_action={}, visible={}, response_empty={}",
                 is_normal_chat,
                 has_action_tag,
                 self._visible,
+                not bool(clean_content),
             )
 
             # Decide what to send to user
