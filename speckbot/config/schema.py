@@ -223,6 +223,13 @@ class ToolsConfig(Base):
             path_append=self.exec_path_append,
         )
 
+    @property
+    def transcription(self) -> "TranscriptionConfig":
+        """Return TranscriptionConfig for backward compatibility."""
+        return TranscriptionConfig(
+            groq_api_key=self.transcription_groq_api_key,
+        )
+
 
 # ==================== ROOT CONFIG ====================
 
