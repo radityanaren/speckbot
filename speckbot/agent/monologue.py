@@ -103,10 +103,11 @@ class MonologueSystem:
         journal_file.write_text(updated, encoding="utf-8")
         logger.info("Journal: wrote entry")
 
-    def _build_prompt(self) -> str:
+    def _build_prompt(self, last_user_message: str = "") -> str:
         """Build the prompt based on mode."""
+        last_msg_ctx = f"\nLast user message: {last_user_message}" if last_user_message else ""
         return f"""[SYSTEM - INNER MONOLOGUE]
-User has been gone for {self._idle_seconds} seconds.
+User has been gone for {last_msg_ctx} seconds.
 
 RULES:
 1. DO NOT message user in this answer, they won't see it, you need to call tool for that.
@@ -167,7 +168,19 @@ You CAN use tools but ask for permission to the upstream message using message t
         else:
             channel, chat_id = "cli", recent_key or "default"
 
-        full_prompt = self._build_prompt()
+        # Extract last user message from session for context
+        last_user_msg = ""
+        if recent_session and recent_session.messages:
+            for msg_data in reversed(recent_session.messages):
+                if msg_data.get("role") == "user":
+                    content = msg_data.get("content", "")
+                    # Strip runtime context tag if present
+                    if "[Runtime Context" in content:
+                        content = content.split("\n\n", 1)[-1] if "\n\n" in content else content
+                    last_user_msg = content.strip()[:200]  # Limit to 200 chars
+                    break
+
+        full_prompt = self._build_prompt(last_user_msg)
 
         msg = InboundMessage(
             channel=channel,
@@ -185,8 +198,15 @@ You CAN use tools but ask for permission to the upstream message using message t
             chat_id,
         )
 
-        # Process through agent
-        response = await process_callback(msg, recent_key)
+        # Process through agent - use silent progress callback in invisible mode
+        if self._visible:
+            response = await process_callback(msg, recent_key)
+        else:
+            # In invisible mode, create a silent callback that drops all progress messages
+            async def silent_progress(content: str, *, tool_hint: bool = False) -> None:
+                pass  # Drop all thoughts/tool hints in invisible mode
+
+            response = await process_callback(msg, recent_key, on_progress=silent_progress)
 
         # Handle the response
         if response:
