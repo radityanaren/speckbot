@@ -16,6 +16,7 @@ from loguru import logger
 
 from speckbot.agent.context import ContextBuilder
 from speckbot.agent.memory import MemoryConsolidator
+from speckbot.agent.monologue import MonologueSystem
 from speckbot.agent.skills import BUILTIN_SKILLS_DIR
 from speckbot.agent.subagent import SubagentManager
 from speckbot.agent.tools.cron import CronTool
@@ -84,32 +85,6 @@ class AgentLoop:
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 
-        # Monologue config - handle both snake_case and camelCase
-        self._monologue_enabled = (
-            monologue_config.get("enabled", False) if monologue_config else False
-        )
-        self._monologue_idle_seconds = (
-            (monologue_config.get("idle_seconds") or monologue_config.get("idleSeconds") or 300)
-            if monologue_config
-            else 300
-        )
-        self._monologue_prompt = (
-            monologue_config.get("prompt", "Hey, been a while — what are you working on?")
-            if monologue_config
-            else "Hey, been a while — what are you working on?"
-        )
-        self._monologue_visible = (
-            monologue_config.get("visible", True) if monologue_config else True
-        )
-        logger.info(
-            "Monologue config: enabled={}, idle={}s, visible={}",
-            self._monologue_enabled,
-            self._monologue_idle_seconds,
-            self._monologue_visible,
-        )
-        self._idle_timer_task: asyncio.Task | None = None  # Idle timer task
-        self._next_is_normal: bool = False  # If True, next idle fires normal chat (from ACTION tag)
-
         # Create shared security service first
         from speckbot.agent.security import SecurityService
 
@@ -117,7 +92,17 @@ class AgentLoop:
 
         self.context = ContextBuilder(workspace, security=self.security)
         self.sessions = session_manager or SessionManager(workspace)
-        self.tools = ToolRegistry(hooks_config, workspace=workspace, security=self.security)
+
+        # Initialize monologue system after sessions
+        self.monologue = MonologueSystem(
+            bus=bus,
+            sessions=self.sessions,
+            workspace=workspace,
+            config=monologue_config,
+        )
+        # Set the process callback for monologue system
+        self.monologue.set_process_callback(self._process_message)
+
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,
@@ -316,6 +301,8 @@ class AgentLoop:
     async def run(self) -> None:
         """Run the agent loop, dispatching messages as tasks to stay responsive to /stop."""
         self._running = True
+        self.monologue.is_running = True
+        self.monologue.restart_idle_timer()
         await self._connect_mcp()
         logger.info("Agent loop started")
 
@@ -377,10 +364,7 @@ class AgentLoop:
         """Process a message under the global lock. Restart idle timer after saving to session."""
         async with self._processing_lock:
             # If user sends a message, cancel any pending normal chat from ACTION
-            # Only happens if N and N+1 are consecutive (no user msg in between)
-            if self._next_is_normal:
-                logger.info("User message received, cancelling pending normal chat")
-                self._next_is_normal = False
+            self.monologue.on_user_message()
 
             try:
                 response = await self._process_message(msg)
@@ -433,6 +417,7 @@ class AgentLoop:
     def stop(self) -> None:
         """Stop the agent loop."""
         self._running = False
+        self.monologue.is_running = False
         logger.info("Agent loop stopping")
 
     async def _process_message(
@@ -656,213 +641,5 @@ class AgentLoop:
         return response.content if response else ""
 
     def _restart_idle_timer(self) -> None:
-        """Restart the idle timer - cancels existing timer and starts a new one."""
-        if not self._monologue_enabled:
-            return
-
-        # Cancel existing timer if any
-        if self._idle_timer_task and not self._idle_timer_task.done():
-            self._idle_timer_task.cancel()
-            # Don't wait - just let it be cancelled asynchronously
-
-        # Start new timer task
-        self._idle_timer_task = asyncio.create_task(self._idle_timer_task_run())
-
-    async def _write_journal(self, entry: str) -> None:
-        """Write a journal entry to JOURNAL.md (bypasses security - direct file write)."""
-        from speckbot.utils.helpers import current_time_str
-
-        journal_file = self.workspace / "JOURNAL.md"
-        current = ""
-        if journal_file.exists():
-            current = journal_file.read_text(encoding="utf-8") or ""
-
-        timestamp = current_time_str().split(",")[0]
-        new_entry = f"- [{timestamp}] {entry}\n"
-
-        if current:
-            updated = current.rstrip() + "\n" + new_entry
-        else:
-            updated = f"# Journal\n{new_entry}"
-
-        journal_file.write_text(updated, encoding="utf-8")
-        logger.info("Journal: wrote entry")
-
-    async def _idle_timer_task_run(self) -> None:
-        """The idle timer task - waits for idle_seconds then sends prompt to agent."""
-        task = asyncio.current_task()
-
-        try:
-            await asyncio.sleep(self._monologue_idle_seconds)
-
-            # Only run if still enabled and running
-            if not self._monologue_enabled or not self._running:
-                return
-
-            # Skip if prompt is empty
-            if not self._monologue_prompt or not self._monologue_prompt.strip():
-                logger.debug("Idle timer: prompt is empty, skipping")
-                return
-
-            # Find most recent active session
-            if not self.sessions._cache:
-                logger.debug("Idle timer: no sessions")
-                return
-
-            recent_session = None
-            recent_key = None
-            latest_update = None
-            for key, session in self.sessions._cache.items():
-                if session.messages:
-                    if latest_update is None or (
-                        session.updated_at and session.updated_at > latest_update
-                    ):
-                        latest_update = session.updated_at
-                        recent_session = session
-                        recent_key = key
-
-            if not recent_session:
-                logger.debug("Idle timer: no session with messages")
-                return
-
-            # Parse channel and chat_id from session key
-            if recent_key and ":" in recent_key:
-                channel, chat_id = recent_key.split(":", 1)
-            else:
-                channel, chat_id = "cli", recent_key or "default"
-
-            # Check if this should be a normal chat (triggered by ACTION from previous monologue)
-            is_normal_chat = self._next_is_normal
-            if is_normal_chat:
-                # Reset flag first
-                self._next_is_normal = False
-                # Normal chat - agent can use message tool to send
-                full_prompt = f"""The user has been idle for {self._monologue_idle_seconds} seconds.
-This is a normal chat turn - your response will be visible to the user.
-You can check in on them, share something, or just say hi.
-You are free to use any tools if needed."""
-            else:
-                # Monologue - invisible thoughts
-                full_prompt = f"""[SYSTEM - INNER MONOLOGUE]
-You have been idle for {self._monologue_idle_seconds} seconds.
-This message is automatic. The user cannot see your response.
-
-RULES:
-1. You are thinking privately. Be honest, not performative.
-2. Check your last thought. If you are repeating it → change direction completely.
-3. Check the user's last message. Are they gone? Are they coming back?
-4. Do NOT message the user. Do NOT use tools. Just think.
-
-THEN ANSWER THIS:
-{self._monologue_prompt}
-
-IF anything came up worth acting on, end with:
-<ACTION> what you want to do and why </ACTION>
-you would be able to call tools on the next monologue"""
-            # Use session_key to ensure response goes to correct channel
-            msg = InboundMessage(
-                channel=channel,
-                sender_id="user",
-                chat_id=chat_id,
-                content=full_prompt,
-                metadata={"is_idle_prompt": True, "is_normal_chat": is_normal_chat},
-                session_key_override=recent_key,
-            )
-            logger.info(
-                "Idle: injecting prompt into session {} (channel={}, chat_id={})",
-                recent_key,
-                channel,
-                chat_id,
-            )
-
-            # Process through agent - response will be sent automatically
-            # Use session_key so it processes in the same session context
-            response = await self._process_message(msg, session_key=recent_key)
-
-            # Handle the response - journal always, send to user if response exists
-            if response:
-                # Check for ACTION tag at the end - this means agent wants to trigger an action
-                # Check for ACTION tag anywhere in content (not just at end)
-                # If found, treat as action - send to user, not journal-only
-                has_action_tag = "<ACTION>" in response.content
-                clean_content = response.content.replace("<ACTION>", "").strip()
-
-                # Clean output - remove system-reminder tags (user can selectively delete)
-                import re
-
-                clean_content = re.sub(
-                    r"<system-reminder>.*?</system-reminder>", "", clean_content, flags=re.DOTALL
-                ).strip()
-
-                await self._write_journal(clean_content)
-
-                # Check if this was a normal chat turn (from previous ACTION)
-                # Normal chat responses are always visible (free form, no prefix)
-                is_normal_chat = msg.metadata.get("is_normal_chat")
-                logger.info(
-                    "Idle: is_normal_chat={}, has_action={}, visible={}",
-                    is_normal_chat,
-                    has_action_tag,
-                    self._monologue_visible,
-                )
-
-                if is_normal_chat:
-                    # Clean for normal chat too
-                    response.content = clean_content
-                    await self.bus.publish_outbound(response)
-                    logger.info("Idle: normal chat response sent to {}", recent_key)
-                elif has_action_tag:
-                    # ACTION tag found - send to user NOW with ⚡ + markdown
-                    wrapped_content = f"⚡\n```\n{clean_content}\n```"
-                    response.content = wrapped_content
-                    await self.bus.publish_outbound(response)
-                    # Also set flag to trigger normal chat on NEXT idle
-                    self._next_is_normal = True
-                    logger.info("Idle: ACTION sent (⚡), will trigger normal chat on next idle")
-                elif self._monologue_visible:
-                    # Thought mode - visible to user
-                    logger.info(
-                        "Idle: monologue_visible={}, sending thought", self._monologue_visible
-                    )
-                    wrapped_content = f"💭\n```\n{clean_content}\n```"
-                    response.content = wrapped_content
-                    await self.bus.publish_outbound(response)
-                    logger.info("Idle: journaled and sent thought to {}", recent_key)
-                else:
-                    # Thought mode - invisible (journal only)
-                    logger.info("Idle: monologue_visible={}, journal only", self._monologue_visible)
-                    logger.info("Idle: journaled thought (invisible) to {}", recent_key)
-            else:
-                # Agent used message tool - message already sent
-                # Check if this was a normal chat turn
-                if msg.metadata.get("is_normal_chat"):
-                    logger.info("Idle: agent sent message via tool (normal chat) to {}", recent_key)
-                else:
-                    # Get the last user message from session as the thought content
-                    if recent_session and recent_session.messages:
-                        # Last message is the inner prompt we just injected, get the one before
-                        thought_content = (
-                            recent_session.messages[-2].get("content", "")
-                            if len(recent_session.messages) >= 2
-                            else "[thought content not found]"
-                        )
-                        # Clean up the inner prompt prefix
-                        if "[INNER MONOLOGUE" in thought_content:
-                            thought_content = (
-                                thought_content.split("]", 1)[1].strip()
-                                if "]" in thought_content
-                                else thought_content
-                            )
-                        if thought_content and not thought_content.startswith("[thought"):
-                            await self._write_journal(thought_content)
-                            logger.info("Idle: journaled thought (agent used message tool)")
-                    logger.info("Idle: no direct response (agent used message tool)")
-
-        except asyncio.CancelledError:
-            # Timer was cancelled (user sent a message) - that's expected, do nothing
-            # Don't restart - user action already restarted via _restart_idle_timer()
-            pass
-        else:
-            # Only restart timer if task completed normally (not cancelled)
-            if self._monologue_enabled and self._running:
-                self._restart_idle_timer()
+        """Restart the idle timer."""
+        self.monologue.restart_idle_timer()
