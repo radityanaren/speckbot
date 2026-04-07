@@ -40,8 +40,6 @@ class MonologueSystem:
         self.workspace = workspace
         self._running = False
         self._idle_timer_task: asyncio.Task | None = None
-        self._next_is_normal: bool = False  # If True, next idle is normal chat (from ACTION)
-        self._pending_action: str | None = None  # Content of previous ACTION tag
         self._process_callback = None  # Callback to process messages
 
         # Config
@@ -105,33 +103,20 @@ class MonologueSystem:
         journal_file.write_text(updated, encoding="utf-8")
         logger.info("Journal: wrote entry")
 
-    def _build_prompt(self, is_normal_chat: bool) -> str:
+    def _build_prompt(self) -> str:
         """Build the prompt based on mode."""
-        if is_normal_chat:
-            # Normal chat - execute pending action or just chat
-            if self._pending_action:
-                action_content = self._pending_action
-                self._pending_action = None  # Clear after use
-                return f"""The user has been idle. Execute your pending action: {action_content}
-Use tools to do it, or send a message to the user."""
-            else:
-                return f"""The user has been idle. What do you want to say to them?
-You can use tools if needed."""
-        else:
-            return f"""[SYSTEM - INNER MONOLOGUE]
+        return f"""[SYSTEM - INNER MONOLOGUE]
 You have been idle for {self._idle_seconds} seconds.
-This message is automatic. The user cannot see your response.
+This message is automatic.
 
 RULES:
-1. You are thinking privately. Be honest, not performative.
-2. Check your last thought. If you are repeating it → change direction completely.
-3. Check the user's last message. Are they gone? Are they coming back?
-4. Do NOT message the user. Do NOT use tools. Just think.
+1. Think privately - your response goes to journal only, user cannot see it.
+2. If restating previous thought → hard pivot.
+3. Check user's last message - are they gone or coming back?
 
-ANSWER THIS:
 {self._prompt}
 
-IF you want to message user or use tools(in the next monologue), add this to the end of the message: </ACTION>"""
+You CAN use tools directly now if needed - no need for special tags."""
 
     def _find_recent_session(self) -> tuple[Session | None, str | None]:
         """Find the most recently active session that has recent user activity."""
@@ -183,19 +168,14 @@ IF you want to message user or use tools(in the next monologue), add this to the
         else:
             channel, chat_id = "cli", recent_key or "default"
 
-        # Check if this should be a normal chat (triggered by ACTION from previous monologue)
-        is_normal_chat = self._next_is_normal or self._pending_action is not None
-        if is_normal_chat:
-            self._next_is_normal = False  # Reset flag
-
-        full_prompt = self._build_prompt(is_normal_chat)
+        full_prompt = self._build_prompt()
 
         msg = InboundMessage(
             channel=channel,
             sender_id="user",
             chat_id=chat_id,
             content=full_prompt,
-            metadata={"is_idle_prompt": True, "is_normal_chat": is_normal_chat},
+            metadata={"is_idle_prompt": True},
             session_key_override=recent_key,
         )
 
@@ -213,66 +193,26 @@ IF you want to message user or use tools(in the next monologue), add this to the
 
         # Handle the response
         if response:
-            has_action_tag = "<ACTION>" in response.content
-
-            # Extract ACTION content before cleaning
-            action_content = None
-            if has_action_tag:
-                import re
-
-                action_match = re.search(r"<ACTION>(.*?)</ACTION>", response.content, re.DOTALL)
-                if action_match:
-                    action_content = action_match.group(1).strip()
-                    logger.info("Idle: extracted ACTION content: {}", action_content[:100])
-
-            clean_content = response.content.replace("<ACTION>", "").strip()
-
-            # Always journal
-            await self.write_journal(clean_content)
+            # Always journal the response
+            await self.write_journal(response.content)
 
             logger.info(
-                "Idle: is_normal_chat={}, has_action={}, visible={}, response_empty={}",
-                is_normal_chat,
-                has_action_tag,
+                "Idle: visible={}, has_content={}",
                 self._visible,
-                not bool(clean_content),
+                bool(response.content),
             )
 
-            # Decide what to send to user
-            if is_normal_chat:
-                # Normal chat - response goes directly to user
-                response.content = clean_content
-                await self.bus.publish_outbound(response)
-                logger.info("Idle: normal chat response sent to {}", recent_key)
-
-            elif has_action_tag:
-                # ACTION tag found - show the action (what they want to do), not the thought
-                self._pending_action = action_content
-                # Show the action content in the output
-                action_display = action_content if action_content else "action requested"
-                response.content = f"⚡ {action_display}"
-                await self.bus.publish_outbound(response)
-                logger.info(
-                    "Idle: ACTION found, will execute '{}' on next idle",
-                    action_content[:50] if action_content else "empty",
-                )
-
-            elif self._visible:
-                # Thought visible to user
-                response.content = f"💭\n```\n{clean_content}\n```"
+            # Send to user based on visible setting
+            if self._visible:
+                response.content = f"💭\n{response.content}"
                 await self.bus.publish_outbound(response)
                 logger.info("Idle: journaled and sent thought to {}", recent_key)
-
             else:
-                # Journal only (invisible)
-                logger.info("Idle: journaled thought (invisible) to {}", recent_key)
+                logger.info("Idle: journaled (invisible) to {}", recent_key)
 
         else:
             # Agent used message tool (no direct response)
-            if is_normal_chat:
-                logger.info("Idle: agent sent message via tool (normal chat) to {}", recent_key)
-            else:
-                logger.info("Idle: no direct response (agent used message tool)")
+            logger.info("Idle: no direct response (agent used message tool)")
 
     async def _idle_timer_run(self) -> None:
         """The idle timer coroutine - waits then triggers monologue."""
@@ -301,8 +241,6 @@ IF you want to message user or use tools(in the next monologue), add this to the
                 self.restart_idle_timer()
 
     async def on_user_message(self) -> None:
-        """Called when user sends a message - cancel pending actions."""
-        if self._next_is_normal or self._pending_action:
-            logger.info("User message received, cancelling pending action")
-        self._next_is_normal = False
-        self._pending_action = None
+        """Called when user sends a message."""
+        # Just log - nothing to cancel anymore
+        pass
