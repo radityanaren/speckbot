@@ -192,6 +192,27 @@ class ToolsConfig(Base):
     restrict_to_workspace: bool = False
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=_default_mcp_servers)
 
+    @property
+    def web(self) -> "WebToolsConfig":
+        """Return WebToolsConfig for backward compatibility."""
+        return WebToolsConfig(
+            proxy=self.web_proxy,
+            search=WebSearchConfig(
+                provider=self.web_search_provider,
+                api_key=self.web_search_api_key,
+                base_url=self.web_search_base_url,
+                max_results=self.web_search_max_results,
+            ),
+        )
+
+    @property
+    def exec(self) -> "ExecToolConfig":
+        """Return ExecToolConfig for backward compatibility."""
+        return ExecToolConfig(
+            timeout=self.exec_timeout,
+            path_append=self.exec_path_append,
+        )
+
 
 # ==================== ROOT CONFIG ====================
 
@@ -297,11 +318,13 @@ class Config(BaseSettings):
 # These classes were flattened into ToolsConfig but kept as aliases for imports
 class ExecToolConfig(Base):
     """Shell exec tool configuration (deprecated, use ToolsConfig.exec_* fields)."""
+
     timeout: int = 60
     path_append: str = ""
 
 
 class WebToolsConfig(Base):
     """Web tools configuration (deprecated, use ToolsConfig.web_* fields)."""
+
     proxy: str | None = None
     search: WebSearchConfig = Field(default_factory=WebSearchConfig)
