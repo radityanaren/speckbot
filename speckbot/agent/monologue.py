@@ -107,7 +107,7 @@ class MonologueSystem:
         """Build the prompt based on mode."""
         last_msg_ctx = f"\nLast user message: {last_user_message}" if last_user_message else ""
         return f"""[SYSTEM - INNER MONOLOGUE]
-User has been gone for {last_msg_ctx} seconds.
+User(s) has been gone for {last_msg_ctx} seconds.
 
 RULES:
 1. DO NOT message user in this answer, they won't see it, you need to call tool for that.
