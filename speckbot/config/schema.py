@@ -36,6 +36,8 @@ class AgentDefaults(Base):
     temperature: float = DEFAULT_AGENT_TEMPERATURE
     max_tool_iterations: int = DEFAULT_MAX_TOOL_ITERATIONS
     reasoning_effort: str | None = None
+    # Context preset: controls how much history/journal to include in context
+    context_level: Literal["small", "medium", "large"] = "medium"
 
 
 class AgentsConfig(Base):

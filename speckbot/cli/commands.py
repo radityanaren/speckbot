@@ -62,6 +62,7 @@ def _flush_pending_tty_input() -> None:
         # Try termios first (Unix/Linux)
         try:
             import termios
+
             termios.tcflush(fd, termios.TCIFLUSH)
         except (ImportError, OSError):
             # Fallback: select + read for portability
@@ -500,6 +501,7 @@ def gateway(
         channels_config=config.channels,
         hooks_config=config.security.model_dump() if config.security else None,
         monologue_config=config.agents.monologue.model_dump() if config.agents.monologue else None,
+        context_level=config.agents.defaults.context_level,
     )
 
     # Set cron callback (needs agent)
@@ -752,6 +754,7 @@ def agent(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         hooks_config=config.security.model_dump() if config.security else None,
+        context_level=config.agents.defaults.context_level,
     )
 
     # Shared reference for progress callbacks
