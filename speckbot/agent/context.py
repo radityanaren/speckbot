@@ -122,11 +122,22 @@ Your workspace is at: {workspace_path}
 Reply directly with text for conversations. Only use the 'message' tool to send to a specific chat channel."""
 
     @staticmethod
-    def _build_runtime_context(channel: str | None, chat_id: str | None) -> str:
+    def _build_runtime_context(
+        channel: str | None,
+        chat_id: str | None,
+        user_id: str | None = None,
+        username: str | None = None,
+    ) -> str:
         """Build untrusted runtime metadata block for injection before the user message."""
         lines = [f"Current Time: {current_time_str()}"]
         if channel and chat_id:
             lines += [f"Channel: {channel}", f"Chat ID: {chat_id}"]
+        # Include user info if available (for group chats to distinguish users)
+        if user_id:
+            user_info = f"User ID: {user_id}"
+            if username:
+                user_info += f" (@{username})"
+            lines.append(user_info)
         return ContextBuilder._RUNTIME_CONTEXT_TAG + "\n" + "\n".join(lines)
 
     def _load_bootstrap_files(self) -> str:
@@ -185,6 +196,8 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         hooks_config: dict[str, Any] | None = None,
         session_key: str | None = None,
         skip_security: bool = False,
+        user_id: str | None = None,
+        username: str | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
 
@@ -202,7 +215,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
                     },
                 ]
 
-        runtime_ctx = self._build_runtime_context(channel, chat_id)
+        runtime_ctx = self._build_runtime_context(channel, chat_id, user_id, username)
         user_content = self._build_user_content(current_message, media)
 
         # Merge runtime context and user content into a single user message

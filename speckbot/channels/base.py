@@ -170,6 +170,9 @@ class BaseChannel(GroupPolicyMixin, ABC):
             media=media or [],
             metadata=metadata or {},
             session_key_override=session_key,
+            # Extract user identification from metadata (set by channel implementations)
+            user_id=metadata.get("user_id") if metadata else None,
+            username=metadata.get("username") if metadata else None,
         )
 
         await self.bus.publish_inbound(msg)

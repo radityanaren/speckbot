@@ -447,6 +447,8 @@ class AgentLoop:
                 chat_id=chat_id,
                 current_role=current_role,
                 session_key=msg.session_key,
+                user_id=msg.user_id,
+                username=msg.username,
             )
             final_content, _, all_msgs = await self._run_agent_loop(
                 messages, session_key=msg.session_key
@@ -540,6 +542,8 @@ class AgentLoop:
             channel=msg.channel,
             chat_id=msg.chat_id,
             session_key=msg.session_key,
+            user_id=msg.user_id,
+            username=msg.username,
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:

@@ -386,6 +386,8 @@ class DiscordChannel(BaseChannel):
                 "message_id": str(payload.get("id", "")),
                 "guild_id": guild_id,
                 "reply_to": reply_to,
+                "user_id": author.get("id"),  # Numeric user ID for distinguishing users in groups
+                "username": author.get("username"),  # Username for display
             },
         )
 
