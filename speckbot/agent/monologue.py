@@ -246,10 +246,11 @@ IF you want to message user or use tools(in the next monologue), add this to the
                 logger.info("Idle: normal chat response sent to {}", recent_key)
 
             elif has_action_tag:
-                # ACTION tag found - store action content for next cycle
+                # ACTION tag found - show the action (what they want to do), not the thought
                 self._pending_action = action_content
-                # Send current response to user (if visible) but next cycle is execution
-                response.content = f"⚡\n```\n{clean_content}\n```"
+                # Show the action content in the output
+                action_display = action_content if action_content else "action requested"
+                response.content = f"⚡ {action_display}"
                 await self.bus.publish_outbound(response)
                 logger.info(
                     "Idle: ACTION found, will execute '{}' on next idle",
