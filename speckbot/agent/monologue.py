@@ -130,34 +130,42 @@ IF anything came up worth acting on, end with:
 you would be able to call tools on the next monologue"""
 
     def _find_recent_session(self) -> tuple[Session | None, str | None]:
-        """Find the most recently active session."""
+        """Find the most recently active session that has recent user activity."""
         if not self.sessions._cache:
             return None, None
 
+        # Find session with most recent messages (prefer active conversations)
         recent_session = None
         recent_key = None
         latest_update = None
 
         for key, session in self.sessions._cache.items():
             if session.messages:
-                if latest_update is None or (
-                    session.updated_at and session.updated_at > latest_update
-                ):
-                    latest_update = session.updated_at
-                    recent_session = session
-                    recent_key = key
+                # Get the last message timestamp in this session
+                last_msg = session.messages[-1] if session.messages else None
+                if last_msg:
+                    last_time = last_msg.get("timestamp")
+                    if last_time:
+                        # Parse timestamp
+                        from datetime import datetime
+
+                        try:
+                            if isinstance(last_time, str):
+                                last_time = datetime.fromisoformat(last_time.replace("Z", "+00:00"))
+                        except:
+                            pass
+
+                        if latest_update is None or (last_time and last_time > latest_update):
+                            latest_update = last_time
+                            recent_session = session
+                            recent_key = key
 
         return recent_session, recent_key
 
     def _clean_output(self, content: str) -> str:
-        """Remove system tags from output."""
-        cleaned = re.sub(
-            r"<system-reminder>.*?</system-reminder>", "", content, flags=re.DOTALL
-        ).strip()
-        # Also clean operational mode reminders
-        cleaned = re.sub(
-            r"Your operational mode has changed.*", "", cleaned, flags=re.DOTALL
-        ).strip()
+        """Remove all <tag> patterns from output."""
+        # Remove any <...> tags
+        cleaned = re.sub(r"<[^>]+>", "", content).strip()
         return cleaned
 
     async def handle_idle(
