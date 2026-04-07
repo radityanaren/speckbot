@@ -107,18 +107,16 @@ class MonologueSystem:
 
     def _build_prompt(self, is_normal_chat: bool) -> str:
         """Build the prompt based on mode."""
-        if is_normal_chat or self._pending_action:
-            # Normal chat after ACTION - use the action content as context
+        if is_normal_chat:
+            # Normal chat - execute pending action or just chat
             if self._pending_action:
                 action_content = self._pending_action
                 self._pending_action = None  # Clear after use
-                return f"""The user has been idle. Last action you wanted to take: {action_content}
-Now execute that action - use tools to do it, or send a message to the user."""
+                return f"""The user has been idle. Execute your pending action: {action_content}
+Use tools to do it, or send a message to the user."""
             else:
-                return f"""The user has been idle for {self._idle_seconds} seconds.
-This is a normal chat turn - your response will be visible to the user.
-You can check in on them, share something, or just say hi.
-You are free to use any tools if needed."""
+                return f"""The user has been idle. What do you want to say to them?
+You can use tools if needed."""
         else:
             return f"""[SYSTEM - INNER MONOLOGUE]
 You have been idle for {self._idle_seconds} seconds.
