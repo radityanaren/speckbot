@@ -106,6 +106,12 @@ class AgentLoop:
             config=monologue_config,
         )
 
+        # Configure context with monologue settings for identity prompt
+        self.context.set_monologue_config(
+            enabled=self.monologue._enabled,
+            idle_seconds=self.monologue._idle_seconds,
+        )
+
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,

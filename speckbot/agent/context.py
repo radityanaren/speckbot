@@ -24,12 +24,12 @@ class ContextBuilder:
 
     # Hardcoded file descriptions - added BEFORE reading each file
     _BOOTSTRAP_DESCRIPTIONS = {
-        "AGENTS.md": "File: Agent instructions and behavioral guidelines. Contains how you should act, save memories, use cron, and manage heartbeat tasks.",
-        "SOUL.md": "File: Your personality, values, and communication style. Defines who you are and how you communicate.",
-        "USER.md": "File: User profile and preferences. Information about the user to personalize interactions.",
-        "HISTORY.md": "File: Past conversation summaries. Archived conversations from previous sessions (consolidated when context gets full).",
-        "MEMORY.md": "File: Memory index. Overview of all saved knowledges and projects with dates.",
-        "JOURNAL.md": "File: Your recent inner monologue journal entries (private thoughts). Use this to recall what you were thinking about during idle moments.",
+        "AGENTS.md": "File: Your instructions and behavioral guidelines.",
+        "SOUL.md": "File: Your personality and communication style.",
+        "USER.md": "File: User profile and preferences.",
+        "HISTORY.md": "File: Past conversations (summarized when context full).",
+        "MEMORY.md": "File: Index of saved knowledges (knowledges/) and projects (projects/). Use save_knowledge and save_project tools to save.",
+        "JOURNAL.md": "File: Your private inner monologue journal entries.",
     }
 
     def __init__(self, workspace: Path, security=None):
@@ -37,6 +37,12 @@ class ContextBuilder:
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(workspace)
         self.security = security  # Shared security service
+        self.monologue_enabled = False  # Set by AgentLoop if enabled
+
+    def set_monologue_config(self, enabled: bool, idle_seconds: int = 300) -> None:
+        """Configure monologue system for identity prompt."""
+        self.monologue_enabled = enabled
+        self.monologue_idle_seconds = idle_seconds
 
     def build_system_prompt(
         self,
@@ -69,7 +75,7 @@ class ContextBuilder:
             parts.append(f"""# Skills
 
 The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
-Skills with available="false" need dependencies installed first - you can try installing them with apt/brew.
+Skills with available="false" need dependencies installed first.
 
 {skills_summary}""")
 
@@ -81,6 +87,25 @@ Skills with available="false" need dependencies installed first - you can try in
         system = platform.system()
         runtime = f"{'macOS' if system == 'Darwin' else system} {platform.machine()}, Python {platform.python_version()}"
 
+        # Only show the relevant platform based on detected system
+        if system == "Windows":
+            platform_info = "Windows: prefer file tools or cmd commands."
+        else:
+            platform_info = "POSIX (macOS/Linux): standard shell tools available."
+
+        # Monologue section - only if enabled
+        monologue_section = ""
+        if self.monologue_enabled:
+            monologue_section = f"""### Monologue
+- When idle ({self.monologue_idle_seconds}s), expects monologue, answer it for your own mind, not for the user
+- If you want to message the user, use 'message' tool
+"""
+        else:
+            monologue_section = """### Monologue
+- Disabled
+
+"""
+
         return f"""# You are a helpful AI agent.
 
 ## Runtime
@@ -89,16 +114,10 @@ Skills with available="false" need dependencies installed first - you can try in
 ## Workspace
 {workspace_path}
 
-### Memory
-- knowledges/ - Factual/technical knowledge
-- projects/ - Project-specific context
-- HISTORY.md - Past conversations (summarized)
-- MEMORY.md - Saved knowledge/projects
-- skills/ - Custom tools
+{monologue_section}
 
 ## Platform
-- Windows: prefer file tools or cmd commands.
-- POSIX: standard shell tools available.
+- {platform_info}
 
 ## Security
 - Dangerous commands/patterns are blocked.
