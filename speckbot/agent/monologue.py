@@ -124,7 +124,7 @@ RULES:
 2. This Answer should be for your OWN THOUGHT, NOT USER.
 3. If restating previous thought → hard pivot.
 
-ANSWER THIS SHORT AND SIMPLE: {self._prompt}
+ANSWER THIS(3000 CHARACTERS MAX): {self._prompt}
 
 You CAN use tools but ask for permission to the upstream message using message tool."""
 
