@@ -239,7 +239,8 @@ You CAN use tools but ask for permission to the upstream message using message t
                 if len(cleaned_content) > char_limit:
                     cleaned_content = cleaned_content[:char_limit] + "\n...(truncated)"
 
-                response.content = f"💭 {cleaned_content}"
+                # Send as markdown code block (restore markdown)
+                response.content = f"💭\n```\n{cleaned_content.strip()}\n```"
                 await self.bus.publish_outbound(response)
             else:
                 logger.info("Idle: journaled (invisible) to {}", recent_key)
