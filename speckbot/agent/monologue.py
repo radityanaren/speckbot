@@ -11,6 +11,16 @@ from loguru import logger
 
 from speckbot.bus.events import InboundMessage
 
+# Character limits per channel for outbound monologue messages
+# Leave buffer for "💭\n" prefix
+CHANNEL_OUTBOUND_LIMITS = {
+    "discord": 1900,
+    "telegram": 4000,
+    "slack": 3000,
+    "cli": 5000,
+    "default": 2000,
+}
+
 if TYPE_CHECKING:
     from speckbot.bus.events import OutboundMessage
     from speckbot.bus.queue import MessageBus
@@ -114,7 +124,7 @@ RULES:
 2. This Answer should be for your OWN THOUGHT, NOT USER.
 3. If restating previous thought → hard pivot.
 
-ANSWER THIS :{self._prompt}
+ANSWER THIS SHORT AND SIMPLE: {self._prompt}
 
 You CAN use tools but ask for permission to the upstream message using message tool."""
 
@@ -215,7 +225,21 @@ You CAN use tools but ask for permission to the upstream message using message t
 
             # Send to user based on visible setting
             if self._visible:
-                response.content = f"💭\n```\n{response.content}\n```"
+                # Clean model output tokens from response
+                cleaned_content = response.content
+                # Remove lines that start with <|
+                lines = cleaned_content.split("\n")
+                cleaned_lines = [line for line in lines if not line.strip().startswith("<|")]
+                cleaned_content = "\n".join(cleaned_lines)
+
+                # Truncate if needed - ONLY for outbound, journal gets full content
+                char_limit = CHANNEL_OUTBOUND_LIMITS.get(
+                    channel, CHANNEL_OUTBOUND_LIMITS["default"]
+                )
+                if len(cleaned_content) > char_limit:
+                    cleaned_content = cleaned_content[:char_limit] + "\n...(truncated)"
+
+                response.content = f"💭 {cleaned_content}"
                 await self.bus.publish_outbound(response)
             else:
                 logger.info("Idle: journaled (invisible) to {}", recent_key)
