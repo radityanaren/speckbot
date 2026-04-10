@@ -466,6 +466,12 @@ class AgentLoop:
                 response = await self._process_message(msg)
 
                 if response is not None:
+                    # SECURITY: Scan AI output before sending to user
+                    if self.security and self.security.enabled:
+                        scan_result = self.security.scan_output(response.content or "")
+                        if scan_result.is_blocked:
+                            logger.warning("[Security] Blocking AI output with sensitive content")
+                            response.content = "[BLOCKED - sensitive content]"
                     await self.bus.publish_outbound(response)
                 elif msg.channel == "cli":
                     await self.bus.publish_outbound(
