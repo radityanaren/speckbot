@@ -28,16 +28,6 @@ if TYPE_CHECKING:
 
 
 class MonologueSystem:
-    """
-    Manages inner monologue cycles when the agent is idle.
-
-    Flow:
-    1. Idle timer fires after idle_seconds
-    2. If previous monologue had <ACTION> → normal chat mode (agent can message user)
-    3. Otherwise → monologue mode (private thinking, journal only)
-    4. If monologue has <ACTION> → trigger normal chat on NEXT cycle
-    """
-
     def __init__(
         self,
         bus: MessageBus,
@@ -124,7 +114,7 @@ RULES:
 2. This Answer should be for your OWN THOUGHT, NOT USER.
 3. If restating previous thought → hard pivot.
 
-ANSWER THIS(3000 CHARACTERS MAX): {self._prompt}
+ANSWER THIS(1000 CHARACTERS MAX): {self._prompt}
 
 You CAN use tools but ask for permission to the upstream message using message tool."""
 

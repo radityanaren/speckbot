@@ -134,7 +134,7 @@ class GatewayConfig(Base):
 
 
 class SecurityConfig(Base):
-    """Security detector configuration (BLOCK patterns only)."""
+    """Security detector configuration (BLOCK patterns and ASK confirmations)."""
 
     enabled: bool = False
     patterns: list[str] = Field(
@@ -149,6 +149,8 @@ class SecurityConfig(Base):
             r"\breboot\b",
         ]
     )
+    # Tools that require user confirmation before execution
+    ask_tools: list[str] = Field(default_factory=list)
     audit_log: str | None = None
 
 

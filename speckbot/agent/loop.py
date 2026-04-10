@@ -95,6 +95,11 @@ class AgentLoop:
 
         self.security = SecurityService(hooks_config, workspace)
 
+        # Pending confirmation state - one at a time, blocks all LLM input until resolved
+        self._pending_confirmation: dict[
+            str, dict
+        ] = {}  # session_key -> {tool_name, params, tool_call_id}
+
         self.context = ContextBuilder(workspace, security=self.security)
         self.sessions = session_manager or SessionManager(workspace)
 
@@ -148,6 +153,37 @@ class AgentLoop:
 
         # Initialize message handler (separated logic from orchestration)
         self._message_handler = MessageHandler(self)
+
+    # =============================================================================
+    # Pending Confirmation Management (Security: Ask System)
+    # =============================================================================
+
+    def set_pending_confirmation(
+        self, session_key: str, tool_name: str, params: dict, tool_call_id: str = None
+    ) -> None:
+        """Set a pending confirmation for a tool. Only one at a time."""
+        self._pending_confirmation = {
+            session_key: {
+                "tool_name": tool_name,
+                "params": params,
+                "tool_call_id": tool_call_id,
+            }
+        }
+        logger.info(f"[Security] Pending confirmation set for {tool_name} in session {session_key}")
+
+    def get_pending_confirmation(self, session_key: str) -> dict | None:
+        """Get pending confirmation for a session."""
+        return self._pending_confirmation.get(session_key)
+
+    def clear_pending_confirmation(self, session_key: str) -> None:
+        """Clear pending confirmation for a session."""
+        if session_key in self._pending_confirmation:
+            del self._pending_confirmation[session_key]
+            logger.info(f"[Security] Pending confirmation cleared for session {session_key}")
+
+    def has_pending_confirmation(self, session_key: str) -> bool:
+        """Check if there's a pending confirmation for a session."""
+        return session_key in self._pending_confirmation
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
@@ -270,9 +306,34 @@ class AgentLoop:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
-                    result = await self.tools.execute(
-                        tool_call.name, tool_call.arguments, session_key=session_key
-                    )
+
+                    # SECURITY: Check if tool requires confirmation (ASK system)
+                    # Get ask_tools from security config
+                    ask_tools = []
+                    if self.security and self.security.enabled:
+                        from speckbot.config.schema import SecurityConfig
+
+                        # Check config for ask_tools
+                        if hasattr(self.security, "_config") and self.security._config:
+                            ask_tools = self.security._config.get("ask_tools", [])
+
+                    # If tool requires confirmation, ask user first
+                    if tool_call.name in ask_tools:
+                        # Set pending confirmation (blocks all LLM input)
+                        self.set_pending_confirmation(
+                            session_key=session_key,
+                            tool_name=tool_call.name,
+                            params=tool_call.arguments,
+                            tool_call_id=tool_call.id,
+                        )
+                        # Format params for display
+                        params_str = ", ".join(f"{k}={v}" for k, v in tool_call.arguments.items())
+                        result = f"⏳ Confirmation needed: {tool_call.name}({params_str})\n\nPlease reply with 'yes' to confirm or 'no' to cancel."
+                    else:
+                        # Execute normally
+                        result = await self.tools.execute(
+                            tool_call.name, tool_call.arguments, session_key=session_key
+                        )
 
                     # Security: Scan tool output before AI sees it
                     if self.security and self.security.enabled:
@@ -542,6 +603,65 @@ class MessageHandler:
         on_progress: Callable[..., Awaitable[None]] | None = None,
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
+        # Get session key for confirmation check
+        key = session_key or msg.session_key
+
+        # SECURITY: Check if waiting for confirmation - block ALL non-user input
+        pending = self._agent.get_pending_confirmation(key)
+        if pending:
+            # Only accept direct user messages (sender_id == "user")
+            # Block: system messages (monologue/subagent), anything else
+            if msg.sender_id != "user" or msg.channel == "system":
+                logger.debug("[Security] Blocking input while waiting for confirmation")
+                return None
+
+            # Handle user response
+            response = msg.content.strip().lower()
+
+            if response == "yes":
+                # Execute the pending tool
+                tool_name = pending["tool_name"]
+                params = pending["params"]
+                tool_call_id = pending.get("tool_call_id")
+
+                logger.info(f"[Security] User confirmed: {tool_name}")
+                result = await self._agent.tools.execute(tool_name, params, session_key=key)
+
+                # Send result to user
+                response_msg = OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=f"✅ Executed {tool_name}: {result}",
+                )
+                await self._agent.bus.publish_outbound(response_msg)
+
+                # Clear pending confirmation
+                self._agent.clear_pending_confirmation(key)
+                return None
+
+            elif response == "no":
+                # Block and clear
+                logger.info(f"[Security] User denied: {pending['tool_name']}")
+                self._agent.clear_pending_confirmation(key)
+
+                response_msg = OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=f"❌ Cancelled: {pending['tool_name']} was not executed.",
+                )
+                await self._agent.bus.publish_outbound(response_msg)
+                return None
+            else:
+                # User said something other than yes/no - ask again
+                params_str = ", ".join(f"{k}={v}" for k, v in pending["params"].items())
+                response_msg = OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=f"⚠️ Please confirm: {pending['tool_name']}({params_str})? Reply with 'yes' or 'no'",
+                )
+                await self._agent.bus.publish_outbound(response_msg)
+                return None
+
         # System messages: parse origin from chat_id ("channel:chat_id")
         if msg.channel == "system":
             return await self._handle_system_message(msg)
