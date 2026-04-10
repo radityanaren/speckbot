@@ -65,7 +65,7 @@ class DiscordChannel(BaseChannel):
         self._bot_user_id: str | None = None
         self._bot_username: str | None = None
 
-async def start(self) -> None:
+    async def start(self) -> None:
         """Start the Discord gateway connection."""
         self._http = httpx.AsyncClient(timeout=30.0)
 
