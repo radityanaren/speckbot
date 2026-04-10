@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
+import aiohttp
 import httpx
 from pydantic import Field
-import websockets
 from loguru import logger
 
 from speckbot.bus.events import OutboundMessage
@@ -57,7 +57,8 @@ class DiscordChannel(BaseChannel):
             config = DiscordConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: DiscordConfig = config
-        self._ws: websockets.WebSocketClientProtocol | None = None
+        self._ws: aiohttp.ClientWebSocketResponse | None = None
+        self._ws_session: aiohttp.ClientSession | None = None
         self._seq: int | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._typing_tasks: dict[str, asyncio.Task] = {}
@@ -77,9 +78,11 @@ class DiscordChannel(BaseChannel):
         while self._running:
             try:
                 logger.info("Connecting to Discord gateway...")
-                async with websockets.connect(self.config.gateway_url) as ws:
-                    self._ws = ws
-                    await self._gateway_loop()
+                async with aiohttp.ClientSession() as session:
+                    self._ws_session = session
+                    async with session.ws_connect(self.config.gateway_url) as ws:
+                        self._ws = ws
+                        await self._gateway_loop()
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -100,6 +103,9 @@ class DiscordChannel(BaseChannel):
         if self._ws:
             await self._ws.close()
             self._ws = None
+        if self._ws_session:
+            await self._ws_session.close()
+            self._ws_session = None
         if self._http:
             await self._http.aclose()
             self._http = None
@@ -220,11 +226,17 @@ class DiscordChannel(BaseChannel):
         if not self._ws:
             return
 
-        async for raw in self._ws:
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                logger.warning("Invalid JSON from Discord gateway: {}", raw[:100])
+        async for msg in self._ws:
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                try:
+                    data = json.loads(msg.data)
+                except json.JSONDecodeError:
+                    logger.warning("Invalid JSON from Discord gateway: {}", msg.data[:100])
+                    continue
+            elif msg.type == aiohttp.WSMsgType.CLOSE:
+                logger.info("Discord gateway closed")
+                break
+            else:
                 continue
 
             op = data.get("op")
@@ -277,7 +289,7 @@ class DiscordChannel(BaseChannel):
                 },
             },
         }
-        await self._ws.send(json.dumps(identify))
+        await self._ws.send_str(json.dumps(identify))
 
     async def _start_heartbeat(self, interval_s: float) -> None:
         """Start or restart the heartbeat loop."""
@@ -288,7 +300,7 @@ class DiscordChannel(BaseChannel):
             while self._running and self._ws:
                 payload = {"op": 1, "d": self._seq}
                 try:
-                    await self._ws.send(json.dumps(payload))
+                    await self._ws.send_str(json.dumps(payload))
                 except Exception as e:
                     logger.warning("Discord heartbeat failed: {}", e)
                     break
