@@ -89,6 +89,18 @@ class MonologueSystem:
         """Write a journal entry to JOURNAL.md."""
         from speckbot.utils.helpers import current_time_str
 
+        # SECURITY: Scan journal entry before writing
+        if hasattr(self, "_agent") and self._agent:
+            security = self._agent.security
+            if security and security.enabled:
+                scan_result = security.scan_output(entry)
+                if scan_result.is_blocked:
+                    logger.warning("[Security] Blocking journal entry with sensitive content")
+                    entry = "[BLOCKED - sensitive content]"
+                elif security.scan_tool_output(entry).is_blocked:
+                    logger.warning("[Security] Blocking journal entry with sensitive tool output")
+                    entry = "[BLOCKED - sensitive content]"
+
         journal_file = self.workspace / "JOURNAL.md"
         current = ""
         if journal_file.exists():
