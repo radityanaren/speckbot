@@ -644,10 +644,10 @@ class MessageHandler:
         if pending:
             logger.debug(f"[Security Debug] Pending found for key={key}, sender_id={msg.sender_id}")
 
-            # Only accept direct user messages (sender_id == "user")
-            # Block: system messages (monologue/subagent), anything else
-            if msg.sender_id != "user" or msg.channel == "system":
-                logger.debug("[Security] Blocking input while waiting for confirmation")
+            # Only accept direct user messages (channel != "system")
+            # Block: system messages (monologue/subagent) - let Discord users through
+            if msg.channel == "system":
+                logger.debug("[Security] Blocking system input while waiting for confirmation")
                 return None
 
             # Handle user response
@@ -676,16 +676,30 @@ class MessageHandler:
                 return None
 
             elif response == "no":
-                # Block and clear
-                logger.info(f"[Security] User denied: {pending['tool_name']}")
+                # Tell AI the tool was cancelled, send simple message to user
+                tool_name = pending["tool_name"]
+                tool_call_id = pending.get("tool_call_id")
+                logger.info(f"[Security] User denied: {tool_name}")
                 self._agent.clear_pending_confirmation(key)
 
-                response_msg = OutboundMessage(
+                # Send cancellation message to user
+                user_msg = OutboundMessage(
                     channel=msg.channel,
                     chat_id=msg.chat_id,
-                    content=f"❌ Cancelled: {pending['tool_name']} was not executed.",
+                    content=f"❌ Cancelled: {tool_name} was not executed.",
                 )
-                await self._agent.bus.publish_outbound(response_msg)
+                await self._agent.bus.publish_outbound(user_msg)
+
+                # Inject cancellation message into session so AI knows
+                session = self._agent.sessions.get(key)
+                if session:
+                    session.messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": "your tool call has been cancelled by user",
+                        }
+                    )
                 return None
             else:
                 # User said something other than yes/no - ask again
