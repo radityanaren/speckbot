@@ -317,7 +317,7 @@ class AgentLoop:
                         if hasattr(self.security, "_config") and self.security._config:
                             ask_tools = self.security._config.get("ask_tools", [])
 
-                    # If tool requires confirmation, ask user first
+                    # If tool requires confirmation, ask user INSTANTLY (no LLM)
                     if tool_call.name in ask_tools:
                         # Set pending confirmation (blocks all LLM input)
                         self.set_pending_confirmation(
@@ -328,7 +328,24 @@ class AgentLoop:
                         )
                         # Format params for display
                         params_str = ", ".join(f"{k}={v}" for k, v in tool_call.arguments.items())
-                        result = f"⏳ Confirmation needed: {tool_call.name}({params_str})\n\nPlease reply with 'yes' to confirm or 'no' to cancel."
+                        # Send confirmation prompt DIRECTLY to user via bus (INSTANT, no LLM)
+                        from speckbot.bus.events import OutboundMessage
+
+                        # Extract channel/chat from session_key
+                        if session_key and ":" in session_key:
+                            ch, ch_id = session_key.split(":", 1)
+                        else:
+                            ch, ch_id = "cli", session_key or "default"
+
+                        confirm_msg = OutboundMessage(
+                            channel=ch,
+                            chat_id=ch_id,
+                            content=f"⚠️ Please confirm: {tool_call.name}({params_str})? Reply with 'yes' or 'no'",
+                        )
+                        await self.bus.publish_outbound(confirm_msg)
+
+                        # Return empty result to LLM (don't wait for response)
+                        result = "⏳ Waiting for user confirmation..."
                     else:
                         # Execute normally
                         result = await self.tools.execute(
@@ -606,9 +623,27 @@ class MessageHandler:
         # Get session key for confirmation check
         key = session_key or msg.session_key
 
+        # DEBUG: Log message details for security debugging
+        logger.debug(
+            f"[Security Debug] msg.sender_id={msg.sender_id}, msg.channel={msg.channel}, key={key}"
+        )
+
         # SECURITY: Check if waiting for confirmation - block ALL non-user input
         pending = self._agent.get_pending_confirmation(key)
+
+        # DEBUG: Also check all pending confirmations
+        if not pending:
+            # Try checking with msg.chat_id directly
+            alt_key = f"{msg.channel}:{msg.chat_id}" if msg.channel and msg.chat_id else None
+            if alt_key and alt_key != key:
+                pending = self._agent.get_pending_confirmation(alt_key)
+                if pending:
+                    key = alt_key  # Use the alternative key
+                    logger.debug(f"[Security Debug] Using alt key: {alt_key}")
+
         if pending:
+            logger.debug(f"[Security Debug] Pending found for key={key}, sender_id={msg.sender_id}")
+
             # Only accept direct user messages (sender_id == "user")
             # Block: system messages (monologue/subagent), anything else
             if msg.sender_id != "user" or msg.channel == "system":
@@ -617,6 +652,7 @@ class MessageHandler:
 
             # Handle user response
             response = msg.content.strip().lower()
+            logger.debug(f"[Security Debug] User response: {response}")
 
             if response == "yes":
                 # Execute the pending tool
