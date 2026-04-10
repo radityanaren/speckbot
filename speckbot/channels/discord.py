@@ -77,11 +77,15 @@ class DiscordChannel(BaseChannel):
         while self._running:
             try:
                 logger.info("Connecting to Discord gateway...")
-                async with websockets.connect(self.config.gateway_url) as ws:
+                async with websockets.connect(
+                    self.config.gateway_url, open_timeout=10, close_timeout=10
+                ) as ws:
                     self._ws = ws
                     await self._gateway_loop()
             except asyncio.CancelledError:
                 break
+            except asyncio.TimeoutError:
+                logger.warning("Discord gateway timed out during opening handshake")
             except Exception as e:
                 logger.warning("Discord gateway error: {}", e)
                 if self._running:
