@@ -180,6 +180,9 @@ class AgentLoop:
         if session_key in self._pending_confirmation:
             del self._pending_confirmation[session_key]
             logger.info(f"[Security] Pending confirmation cleared for session {session_key}")
+            # Re-enable monologue now that confirmation is done
+            self.monologue.is_running = True
+            self.monologue.restart_idle_timer()
 
     def has_pending_confirmation(self, session_key: str) -> bool:
         """Check if there's a pending confirmation for a session."""
@@ -326,6 +329,9 @@ class AgentLoop:
                             params=tool_call.arguments,
                             tool_call_id=tool_call.id,
                         )
+                        # Disable monologue while waiting for confirmation (prevents spam)
+                        self.monologue.is_running = False
+
                         # Format params for display
                         params_str = ", ".join(f"{k}={v}" for k, v in tool_call.arguments.items())
                         # Send confirmation prompt DIRECTLY to user via bus (INSTANT, no LLM)
@@ -691,7 +697,7 @@ class MessageHandler:
                 await self._agent.bus.publish_outbound(user_msg)
 
                 # Inject cancellation message into session so AI knows
-                session = self._agent.sessions.get(key)
+                session = self._agent.sessions.get_or_create(key)
                 if session:
                     session.messages.append(
                         {
