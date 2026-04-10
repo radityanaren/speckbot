@@ -67,6 +67,11 @@ class DiscordChannel(BaseChannel):
 
     async def start(self) -> None:
         """Start the Discord gateway connection."""
+        if not self.config.token:
+            logger.error("Discord bot token not configured")
+            return
+
+        self._running = True
         self._http = httpx.AsyncClient(timeout=30.0)
 
         while self._running:
