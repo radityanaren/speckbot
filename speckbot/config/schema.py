@@ -150,7 +150,14 @@ class SecurityConfig(Base):
         ]
     )
     # Tools that require user confirmation before execution
-    ask_tools: list[str] = Field(default_factory=list)
+    ask_tools: list[str] = Field(
+        default_factory=lambda: [
+            "edit_file",
+            "write_file",
+            "exec",
+            "mcp_playwright_browser_fill_form",
+        ]
+    )
     audit_log: str | None = None
 
 
