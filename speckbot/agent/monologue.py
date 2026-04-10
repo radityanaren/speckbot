@@ -34,6 +34,7 @@ class MonologueSystem:
         sessions: SessionManager,
         workspace: Path,
         config: dict | None = None,
+        agent=None,  # Reference to AgentLoop for pending confirmation check
     ):
         self.bus = bus
         self.sessions = sessions
@@ -41,6 +42,7 @@ class MonologueSystem:
         self._running = False
         self._idle_timer_task: asyncio.Task | None = None
         self._process_callback = None  # Callback to process messages
+        self._agent = agent  # Store agent reference for pending confirmation check
 
         # Config
         self._enabled = config.get("enabled", False) if config else False
@@ -156,6 +158,18 @@ You CAN use tools but ask for permission to the upstream message using message t
         process_callback,  # AsyncFunction(msg, session_key) -> OutboundMessage | None
     ) -> None:
         """Handle idle timer firing - process the monologue/normal chat."""
+        # SECURITY: Check if any session has pending confirmation
+        # If so, skip monologue to prevent flooding the confirmation handler
+        # Access the sessions dict to check for pending confirmations
+        if hasattr(self, "_agent") and self._agent:
+            if self._agent._pending_confirmation:
+                logger.debug(
+                    "[Monologue] Skipping - pending confirmation in session(s): {}",
+                    list(self._agent._pending_confirmation.keys()),
+                )
+                self.restart_idle_timer()
+                return
+
         # Find most recent session
         recent_session, recent_key = self._find_recent_session()
         if not recent_session:

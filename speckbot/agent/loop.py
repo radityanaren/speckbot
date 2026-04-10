@@ -109,6 +109,7 @@ class AgentLoop:
             sessions=self.sessions,
             workspace=workspace,
             config=monologue_config,
+            agent=self,  # Pass self for pending confirmation check
         )
 
         # Configure context with monologue settings for identity prompt
