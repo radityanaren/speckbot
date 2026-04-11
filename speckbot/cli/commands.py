@@ -336,15 +336,15 @@ def onboard(
     agent_cmd = 'speckbot agent -m "Hello!"'
     gateway_cmd = "speckbot gateway"
     if config:
-        agent_cmd += f" --config {config_path}"
-        gateway_cmd += f" --config {config_path}"
+        agent_cmd = agent_cmd + " --config " + str(config_path)
+        gateway_cmd = gateway_cmd + " --config " + str(config_path)
 
     console.print(f"\n{__logo__} SpeckBot is ready!")
     console.print("\nNext steps:")
     console.print(f"  1. Add your secrets to [cyan]{env_path}[/cyan]")
-    console.print("     Reference them in config.json using ${VAR_NAME}")
-    console.print("     Example: 'api_key': '${OPENAI_API_KEY}'")
-    console.print("  2. Chat: [cyan]{agent_cmd}[/cyan]")
+    console.print("     Reference them in config.json using ${{VAR_NAME}}")
+    console.print("     Example: 'api_key': '${{OPENAI_API_KEY}}'")
+    console.print(f"  2. Chat: [cyan]{agent_cmd}[/cyan]")
     console.print("\n[dim]Edit config.json to add Telegram/Discord channels[/dim]")
 
 
