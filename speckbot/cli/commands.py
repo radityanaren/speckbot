@@ -302,6 +302,29 @@ def onboard(
 
     _onboard_plugins(config_path)
 
+    # Create .env file next to config for secrets
+    env_path = config_path.parent / ".env"
+    if not env_path.exists():
+        env_content = """# SpeckBot Environment Variables
+# Add your secrets here - reference them in config.json using ${VAR_NAME}
+# Example: "api_key": "${OPENAI_API_KEY}"
+#
+# API Keys (add your actual keys):
+# OPENAI_API_KEY=sk-your-openai-key
+# ANTHROPIC_API_KEY=sk-ant-your-key
+# OPENROUTER_API_KEY=sk-or-v1-your-key
+#
+# Channel Tokens:
+# DISCORD_TOKEN=your-discord-bot-token
+# TELEGRAM_TOKEN=your-telegram-bot-token
+
+# Add your secrets below:
+"""
+        env_path.write_text(env_content, encoding="utf-8")
+        console.print(f"[green]✓[/green] Created .env template at {env_path}")
+    else:
+        console.print(f"[dim].env already exists at {env_path}[/dim]")
+
     # Create workspace, preferring the configured workspace path.
     workspace_path = get_workspace_path(config.workspace_path)
     if not workspace_path.exists():
