@@ -130,11 +130,14 @@ def load_config(config_path: Path | None = None) -> Config:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
 
-            # Determine .env path: use agents.env_file_path if set, otherwise default to config directory
+            # Determine .env path: use agents.defaults.env_file_path if set, otherwise default to config directory
             env_file_path = None
             agents_data = data.get("agents", {})
-            if agents_data and agents_data.get("env_file_path"):
-                env_file_path = Path(agents_data["env_file_path"]).expanduser()
+            defaults_data = agents_data.get("defaults", {}) if agents_data else {}
+            env_file_path = defaults_data.get("env_file_path")
+
+            if env_file_path:
+                env_file_path = Path(env_file_path).expanduser()
 
             # Fall back to .env next to config if not specified
             if not env_file_path:

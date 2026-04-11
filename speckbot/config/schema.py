@@ -38,6 +38,11 @@ class AgentDefaults(Base):
     reasoning_effort: str | None = None
     # Context preset: controls how much history/journal to include in context
     context_level: Literal["small", "medium", "large"] = "medium"
+    # Path to .env file for secrets (defaults to config.json directory)
+    env_file_path: str | None = Field(
+        default=None,
+        description="Path to .env file containing secrets. Defaults to config.json directory if not set.",
+    )
 
 
 class AgentsConfig(Base):
@@ -143,16 +148,8 @@ class SecurityConfig(Base):
 
     enabled: bool = False
     patterns: list[str] = Field(
-        default_factory=lambda: [
-            r"\brm\s+-rf\s+[\/\.]",
-            r"\bformat\s+[a-z]:",
-            r"\bdel\s+/f\s+/s\s+/q",
-            r"\bdd\s+if=",
-            r">\s*/dev/",
-            r"\bmkfs\.",
-            r"\bshutdown\b",
-            r"\breboot\b",
-        ]
+        default_factory=list,
+        description="List of regex patterns to block. Add your own patterns as needed.",
     )
     # Tools that require user confirmation before execution
     ask_tools: list[str] = Field(

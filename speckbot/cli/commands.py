@@ -341,9 +341,10 @@ def onboard(
 
     console.print(f"\n{__logo__} SpeckBot is ready!")
     console.print("\nNext steps:")
-    console.print(f"  1. Add your API key to [cyan]{config_path}[/cyan]")
-    console.print("     Get one at: https://openrouter.ai/keys")
-    console.print(f"  2. Chat: [cyan]{agent_cmd}[/cyan]")
+    console.print(f"  1. Add your secrets to [cyan]{env_path}[/cyan]")
+    console.print("     Reference them in config.json using ${VAR_NAME}")
+    console.print("     Example: 'api_key': '${OPENAI_API_KEY}'")
+    console.print("  2. Chat: [cyan]{agent_cmd}[/cyan]")
     console.print("\n[dim]Edit config.json to add Telegram/Discord channels[/dim]")
 
 
