@@ -130,11 +130,21 @@ def load_config(config_path: Path | None = None) -> Config:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
 
-            # Load .env from same directory and interpolate ${VAR} patterns
-            env_path = path.parent / ".env"
-            if env_path.exists():
-                env_vars = load_env(env_path)
+            # Determine .env path: use agents.env_file_path if set, otherwise default to config directory
+            env_file_path = None
+            agents_data = data.get("agents", {})
+            if agents_data and agents_data.get("env_file_path"):
+                env_file_path = Path(agents_data["env_file_path"]).expanduser()
+
+            # Fall back to .env next to config if not specified
+            if not env_file_path:
+                env_file_path = path.parent / ".env"
+
+            # Load .env and interpolate ${VAR} patterns
+            if env_file_path.exists():
+                env_vars = load_env(env_file_path)
                 data = interpolate_env_vars(data, env_vars)
+                logger.debug(f"Loaded .env from {env_file_path}")
 
             data = _migrate_config(data)
             return Config.model_validate(data)
