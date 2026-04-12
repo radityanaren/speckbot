@@ -16,7 +16,6 @@ from loguru import logger
 
 from speckbot.agent.context import ContextBuilder
 from speckbot.agent.memory import MemoryConsolidator
-from speckbot.agent.monologue import MonologueSystem
 from speckbot.agent.skills import BUILTIN_SKILLS_DIR
 from speckbot.agent.subagent import SubagentManager
 from speckbot.agent.tools.cron import CronTool
@@ -29,12 +28,14 @@ from speckbot.agent.tools.web import WebFetchTool, WebSearchTool
 from speckbot.bus.events import InboundMessage, OutboundMessage
 from speckbot.bus.queue import MessageBus
 from speckbot.providers.base import LLMProvider
+from speckbot.services.cron import CronService
+from speckbot.services.monologue import MonologueSystem
+from speckbot.services.timer import UnifiedTimer
 from speckbot.session.manager import Session, SessionManager
 from speckbot.utils.constants import TOOL_RESULT_MAX_CHARS, CONTEXT_PRESETS
 
 if TYPE_CHECKING:
     from speckbot.config.schema import ChannelsConfig, ExecToolConfig, WebSearchConfig
-    from speckbot.cron.service import CronService
 
 
 class AgentLoop:

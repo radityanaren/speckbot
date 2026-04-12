@@ -483,9 +483,9 @@ def gateway(
     from speckbot.bus.queue import MessageBus
     from speckbot.channels.manager import ChannelManager
     from speckbot.config.paths import get_cron_dir
-    from speckbot.cron.service import CronService
-    from speckbot.cron.types import CronJob
-    from speckbot.heartbeat.service import HeartbeatService
+    from speckbot.services.cron.service import CronService
+    from speckbot.services.cron.types import CronJob
+    from speckbot.services.heartbeat.service import HeartbeatService
     from speckbot.session.manager import SessionManager
 
     if verbose:
@@ -523,7 +523,12 @@ def gateway(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         hooks_config=config.security.model_dump() if config.security else None,
-        monologue_config=config.agents.monologue.model_dump() if config.agents.monologue else None,
+        monologue_config={
+            "enabled": config.services.monologue_enabled,
+            "idle_seconds": config.services.monologue_idle_seconds,
+            "prompt": config.services.monologue_prompt,
+            "visible": config.services.monologue_visible,
+        },
         context_level=config.agents.defaults.context_level,
     )
 
@@ -626,19 +631,15 @@ def gateway(
             OutboundMessage(channel=channel, chat_id=chat_id, content=response)
         )
 
-    hb_cfg = config.agents.heartbeat
     heartbeat = HeartbeatService(
         workspace=config.workspace_path,
         provider=provider,
         model=agent.model,
         on_execute=on_heartbeat_execute,
         on_notify=on_heartbeat_notify,
-        interval_seconds=hb_cfg.interval_seconds,
-        enabled=hb_cfg.enabled,
+        interval_seconds=config.services.heartbeat_interval_seconds,
+        enabled=config.services.heartbeat_enabled,
     )
-
-    # Monologue config
-    mono_cfg = config.agents.monologue
 
     if channels.enabled_channels:
         console.print(f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")
@@ -649,54 +650,44 @@ def gateway(
     if cron_status["jobs"] > 0:
         console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
 
-    console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_seconds}s")
+    console.print(
+        f"[green]✓[/green] Heartbeat: every {config.services.heartbeat_interval_seconds}s"
+    )
 
-    if mono_cfg.enabled:
-        console.print(f"[green]✓[/green] Idle prompt: after {mono_cfg.idle_seconds}s idle")
+    if config.services.monologue_enabled:
+        console.print(
+            f"[green]✓[/green] Idle prompt: after {config.services.monologue_idle_seconds}s idle"
+        )
 
     async def run():
-        # Run Dream (memory cleanup) on startup
-        if config.dream.enabled:
-            from speckbot.agent.dream import run_dream
+        # UnifiedTimer handles Dream (startup + sleep timer), heartbeat, and monologue
+        from speckbot.services.timer import UnifiedTimer
 
-            console.print("[dim]Running Dream memory cleanup...[/dim]")
-            await run_dream(
-                config.workspace_path,
-                {
-                    "enabled": config.dream.enabled,
-                    "max_memory_lines": config.dream.max_memory_lines,
-                    "deduplicate": config.dream.deduplicate,
-                    "convert_dates": config.dream.convert_dates,
-                },
-            )
-            console.print("[green]✓[/green] Dream completed")
+        timer_config = {
+            "heartbeat": {
+                "enabled": config.services.heartbeat_enabled,
+                "interval_seconds": config.services.heartbeat_interval_seconds,
+            },
+            "monologue": {
+                "enabled": config.services.monologue_enabled,
+                "idle_seconds": config.services.monologue_idle_seconds,
+            },
+            "dream": {
+                "enabled": config.services.dream_enabled,
+                "sleep_interval_hours": config.services.dream_sleep_interval_hours,
+            },
+        }
 
-        # Sleep timer for auto-restart
-        sleep_timer_task = None
-
-        async def sleep_timer():
-            """Auto-restart after sleep_interval_hours."""
-            if config.dream.sleep_interval_hours <= 0:
-                return  # Disabled
-
-            import time
-
-            sleep_seconds = config.dream.sleep_interval_hours * 3600
-            console.print(
-                f"[dim]Sleep timer: restarting in {config.dream.sleep_interval_hours}h...[/dim]"
-            )
-            await asyncio.sleep(sleep_seconds)
-            console.print("[yellow]Sleep timer: triggering restart...[/yellow]")
-            # Trigger restart
-            os.execv(sys.executable, [sys.executable, "-m", "speckbot", "gateway"])
-
-        # Start sleep timer if enabled
-        if config.dream.enabled and config.dream.sleep_interval_hours > 0:
-            sleep_timer_task = asyncio.create_task(sleep_timer())
+        timer = UnifiedTimer(
+            workspace=config.workspace_path,
+            config=timer_config,
+            heartbeat_service=heartbeat,
+            monologue_service=agent.monologue,
+        )
 
         try:
+            await timer.start()
             await cron.start()
-            await heartbeat.start()
             await asyncio.gather(
                 agent.run(),
                 channels.start_all(),
@@ -709,9 +700,7 @@ def gateway(
             console.print("\n[red]Error: Gateway crashed unexpectedly[/red]")
             console.print(traceback.format_exc())
         finally:
-            # Cancel sleep timer
-            if sleep_timer_task:
-                sleep_timer_task.cancel()
+            timer.stop()
             await agent.close_mcp()
             heartbeat.stop()
             cron.stop()

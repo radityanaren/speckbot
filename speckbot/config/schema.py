@@ -77,17 +77,28 @@ class AgentsConfig(Base):
         )
 
 
-# ==================== DREAM ====================
+# ==================== SERVICES ====================
 
 
-class DreamConfig(Base):
-    """Sleep system - memory cleanup and auto-restart configuration."""
+class ServicesConfig(Base):
+    """Services configuration - unified config for all services."""
 
-    enabled: bool = False
-    max_memory_lines: int = 200
-    deduplicate: bool = True
-    convert_dates: bool = True
-    sleep_interval_hours: int = 24
+    # Heartbeat service
+    heartbeat_enabled: bool = True
+    heartbeat_interval_seconds: int = 30 * 60
+    # Monologue service
+    monologue_enabled: bool = False
+    monologue_idle_seconds: int = 300
+    monologue_prompt: str = "Hey, been a while — what are you working on?"
+    monologue_visible: bool = True
+    # Cron service
+    cron_enabled: bool = True
+    # Dream (memory cleanup + auto-restart)
+    dream_enabled: bool = False
+    dream_max_memory_lines: int = 200
+    dream_deduplicate: bool = True
+    dream_convert_dates: bool = True
+    dream_sleep_interval_hours: int = 24
 
 
 # ==================== CHANNELS ====================
@@ -254,7 +265,7 @@ class Config(BaseSettings):
     """Root configuration for speckbot."""
 
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
-    dream: DreamConfig = Field(default_factory=DreamConfig)
+    services: ServicesConfig = Field(default_factory=ServicesConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)

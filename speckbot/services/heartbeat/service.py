@@ -69,6 +69,7 @@ class HeartbeatService:
         self.enabled = enabled
         self._running = False
         self._task: asyncio.Task | None = None
+        self._last_tick = 0  # Timestamp of last tick (for unified timer)
 
     @property
     def heartbeat_file(self) -> Path:

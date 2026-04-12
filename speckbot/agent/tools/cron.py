@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from speckbot.agent.tools.base import Tool
-from speckbot.cron.service import CronService
-from speckbot.cron.types import CronJobState, CronSchedule
+from speckbot.services.cron import CronService
+from speckbot.services.cron.types import CronJobState, CronSchedule
 
 
 class CronTool(Tool):
