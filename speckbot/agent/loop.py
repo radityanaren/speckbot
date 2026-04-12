@@ -284,20 +284,10 @@ class AgentLoop:
 
             tool_defs = self.tools.get_definitions()
 
-            # DEBUG: Log before LLM call
-            logger.debug(
-                f"[AgentLoop] Iteration {iteration}: Calling LLM with {len(messages)} messages, tools={len(tool_defs) if tool_defs else 0}"
-            )
-
             response = await self.provider.chat_with_retry(
                 messages=messages,
                 tools=tool_defs,
                 model=self.model,
-            )
-
-            # DEBUG: Log after LLM response
-            logger.debug(
-                f"[AgentLoop] LLM response: finish_reason={response.finish_reason}, has_content={bool(response.content)}, has_tool_calls={response.has_tool_calls}"
             )
 
             if response.has_tool_calls:
@@ -627,9 +617,9 @@ class AgentLoop:
 
 class MessageHandler:
     """
-    Handles the logic for processing messages.
+        Handles the logic for processing messages.
 
-    Separated from AgentLoop to keep the orchestrator clean.
+        Separated from AgentLoop to keep the orchestrator clean.
     AgentLoop dispatches, MessageHandler does the work.
     """
 
@@ -643,23 +633,13 @@ class MessageHandler:
         on_progress: Callable[..., Awaitable[None]] | None = None,
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
-        # DEBUG: Trace message flow
-        logger.debug(
-            f"[MessageHandler] START process: channel={msg.channel}, sender_id={msg.sender_id}, content={msg.content[:50]}"
-        )
-
         # Get session key for confirmation check
         key = session_key or msg.session_key
-
-        # DEBUG: Log message details for security debugging
-        logger.debug(
-            f"[Security Debug] msg.sender_id={msg.sender_id}, msg.channel={msg.channel}, key={key}"
-        )
 
         # SECURITY: Check if waiting for confirmation - block ALL non-user input
         pending = self._agent.get_pending_confirmation(key)
 
-        # DEBUG: Also check all pending confirmations
+        # Also check all pending confirmations
         if not pending:
             # Try checking with msg.chat_id directly
             alt_key = f"{msg.channel}:{msg.chat_id}" if msg.channel and msg.chat_id else None
@@ -742,17 +722,14 @@ class MessageHandler:
 
         # System messages: parse origin from chat_id ("channel:chat_id")
         if msg.channel == "system":
-            logger.debug("[MessageHandler] Handling as system message")
             return await self._handle_system_message(msg)
 
         # Slash commands
         cmd = msg.content.strip().lower()
         if slash_response := self._handle_slash_command(msg, cmd):
-            logger.debug("[MessageHandler] Handled as slash command")
             return slash_response
 
         # Normal user message
-        logger.debug("[MessageHandler] Handling as user message, calling _handle_user_message")
         return await self._handle_user_message(msg, session_key, on_progress)
 
     async def _handle_system_message(self, msg: InboundMessage) -> OutboundMessage:
@@ -873,11 +850,6 @@ class MessageHandler:
         """Handle normal user messages."""
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
         logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
-
-        # DEBUG: Check what we have before calling LLM
-        logger.debug(
-            f"[UserMessage] Session key: {session_key}, History present: {session and len(session.messages)}"
-        )
 
         key = session_key or msg.session_key
         session = self._agent.sessions.get_or_create(key)
