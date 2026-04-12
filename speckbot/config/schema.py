@@ -57,11 +57,6 @@ class AgentsConfig(Base):
     monologue_idle_seconds: int = 300
     monologue_prompt: str = "Hey, been a while — what are you working on?"
     monologue_visible: bool = True  # True = show in channel, False = journal only
-    # Path to .env file for secrets (defaults to config directory)
-    env_file_path: str | None = Field(
-        default=None,
-        description="Path to .env file containing secrets. Defaults to config.json directory if not set.",
-    )
 
     @property
     def monologue(self) -> "MonologueConfig":
