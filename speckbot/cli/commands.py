@@ -342,8 +342,8 @@ def onboard(
     console.print(f"  1. Add your secrets to [cyan]{env_path}[/cyan]")
     console.print("     Reference them in config.json using ${VAR_NAME}")
     console.print("     Example: 'api_key': '${OPENAI_API_KEY}'")
-    console.print(f"  2. Run: [cyan]{gateway_cmd}[/cyan]")
-    console.print("\n[dim]Edit config.json to add Telegram/Discord channels[/dim]")
+    console.print("  2. Edit config.json to add Telegram/Discord/Custom channels")
+    console.print("  3. Run: [cyan]speckbot gateway[/cyan]")
 
 
 def _merge_missing_defaults(existing: Any, defaults: Any) -> Any:

@@ -46,35 +46,9 @@ class AgentDefaults(Base):
 
 
 class AgentsConfig(Base):
-    """Agent configuration with heartbeat and monologue."""
+    """Agent configuration."""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
-    # Heartbeat service configuration
-    heartbeat_enabled: bool = True
-    heartbeat_interval_seconds: int = 30 * 60
-    # Monologue system - time-triggered prompt to active session
-    monologue_enabled: bool = False
-    monologue_idle_seconds: int = 300
-    monologue_prompt: str = "Hey, been a while — what are you working on?"
-    monologue_visible: bool = True  # True = show in channel, False = journal only
-
-    @property
-    def monologue(self) -> "MonologueConfig":
-        """Return MonologueConfig for backward compatibility."""
-        return MonologueConfig(
-            enabled=self.monologue_enabled,
-            idle_seconds=self.monologue_idle_seconds,
-            prompt=self.monologue_prompt,
-            visible=self.monologue_visible,
-        )
-
-    @property
-    def heartbeat(self) -> "HeartbeatConfig":
-        """Return HeartbeatConfig for backward compatibility."""
-        return HeartbeatConfig(
-            enabled=self.heartbeat_enabled,
-            interval_seconds=self.heartbeat_interval_seconds,
-        )
 
 
 # ==================== SERVICES ====================
@@ -153,7 +127,7 @@ class SecurityConfig(Base):
     """Security detector configuration (BLOCK patterns and ASK confirmations)."""
 
     enabled: bool = False
-    patterns: list[str] = Field(
+    blocked_patterns: list[str] = Field(
         default_factory=list,
         description="List of regex patterns to block. Add your own patterns as needed.",
     )

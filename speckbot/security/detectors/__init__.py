@@ -39,14 +39,9 @@ class SecurityGateway:
         self.enabled = self.config.get("enabled", False)
         self.workspace = workspace
 
-        # Initialize BLOCK detector with patterns from config
-        # Support both old format (block.patterns) and new format (patterns directly)
-        block_config = self.config.get("block", {})
-        patterns = block_config.get("patterns", [])
-        if not patterns:
-            # New format: patterns at top level
-            patterns = self.config.get("patterns", [])
-        self.block_detector = BlockDetector(patterns=patterns)
+        # Initialize BLOCK detector with blocked_patterns from config
+        blocked_patterns = self.config.get("blocked_patterns", [])
+        self.block_detector = BlockDetector(patterns=blocked_patterns)
 
         logger.info(f"[SecurityGateway] Initialized (enabled={self.enabled})")
 
