@@ -1,11 +1,11 @@
 """CLI commands for speckbot."""
 
 import asyncio
-from contextlib import contextmanager, nullcontext
 import os
 import select
 import signal
 import sys
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -45,22 +45,6 @@ app = typer.Typer(
 
 console = Console()
 
-
-@app.command()
-def help():
-    """Show this help message."""
-    console.print(f"{__logo__} SpeckBot - Personal AI Assistant\n")
-    console.print("Commands:")
-    console.print("  onboard   - Initialize SpeckBot configuration and workspace")
-    console.print("  gateway   - Start the SpeckBot gateway")
-    console.print("  status    - Show SpeckBot status")
-    console.print("\nOptions:")
-    console.print("  --version - Show version")
-    console.print("  --help    - Show this message")
-
-
-# ---------------------------------------------------------------------------
-# CLI input: prompt_toolkit for editing, paste history, and display
 # ---------------------------------------------------------------------------
 # CLI input: prompt_toolkit for editing, paste, history, and display
 # ---------------------------------------------------------------------------
@@ -467,6 +451,7 @@ def _load_runtime_config(config: str | None = None, workspace: str | None = None
 def _warn_deprecated_config_keys(config_path: Path | None) -> None:
     """Hint users to remove obsolete keys from their config file."""
     import json
+
     from speckbot.config.loader import get_config_path
 
     path = config_path or get_config_path()
