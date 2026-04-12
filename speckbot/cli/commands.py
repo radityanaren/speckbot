@@ -40,11 +40,27 @@ app = typer.Typer(
     name="speckbot",
     help=f"{__logo__} SpeckBot - Personal AI Assistant",
     no_args_is_help=True,
+    add_completion=False,
 )
 
 console = Console()
-EXIT_COMMANDS = {"exit", "quit", "/exit", "/quit", ":q"}
 
+
+@app.command()
+def help():
+    """Show this help message."""
+    console.print(f"{__logo__} SpeckBot - Personal AI Assistant\n")
+    console.print("Commands:")
+    console.print("  onboard   - Initialize SpeckBot configuration and workspace")
+    console.print("  gateway   - Start the SpeckBot gateway")
+    console.print("  status    - Show SpeckBot status")
+    console.print("\nOptions:")
+    console.print("  --version - Show version")
+    console.print("  --help    - Show this message")
+
+
+# ---------------------------------------------------------------------------
+# CLI input: prompt_toolkit for editing, paste history, and display
 # ---------------------------------------------------------------------------
 # CLI input: prompt_toolkit for editing, paste, history, and display
 # ---------------------------------------------------------------------------
@@ -721,91 +737,6 @@ def gateway(
 
 
 # ============================================================================
-# Agent Commands
-# ============================================================================
-
-# ============================================================================
-# Channel Commands
-# ============================================================================
-# Channel Commands
-# ============================================================================
-
-
-channels_app = typer.Typer(help="Manage channels")
-app.add_typer(channels_app, name="channels")
-
-
-@channels_app.command("status")
-def channels_status():
-    """Show channel status."""
-    from speckbot.channels.registry import discover_all
-    from speckbot.config.loader import load_config
-
-    config = load_config()
-
-    table = Table(title="Channel Status")
-    table.add_column("Channel", style="cyan")
-    table.add_column("Enabled", style="green")
-
-    for name, cls in sorted(discover_all().items()):
-        section = getattr(config.channels, name, None)
-        if section is None:
-            enabled = False
-        elif isinstance(section, dict):
-            enabled = section.get("enabled", False)
-        else:
-            enabled = getattr(section, "enabled", False)
-        table.add_row(
-            cls.display_name,
-            "[green]\u2713[/green]" if enabled else "[dim]\u2717[/dim]",
-        )
-
-    console.print(table)
-
-
-# ============================================================================
-# Plugin Commands
-# ============================================================================
-
-plugins_app = typer.Typer(help="Manage channel plugins")
-app.add_typer(plugins_app, name="plugins")
-
-
-@plugins_app.command("list")
-def plugins_list():
-    """List all discovered channels (built-in and plugins)."""
-    from speckbot.channels.registry import discover_all, discover_channel_names
-    from speckbot.config.loader import load_config
-
-    config = load_config()
-    builtin_names = set(discover_channel_names())
-    all_channels = discover_all()
-
-    table = Table(title="Channel Plugins")
-    table.add_column("Name", style="cyan")
-    table.add_column("Source", style="magenta")
-    table.add_column("Enabled", style="green")
-
-    for name in sorted(all_channels):
-        cls = all_channels[name]
-        source = "builtin" if name in builtin_names else "plugin"
-        section = getattr(config.channels, name, None)
-        if section is None:
-            enabled = False
-        elif isinstance(section, dict):
-            enabled = section.get("enabled", False)
-        else:
-            enabled = getattr(section, "enabled", False)
-        table.add_row(
-            cls.display_name,
-            source,
-            "[green]yes[/green]" if enabled else "[dim]no[/dim]",
-        )
-
-    console.print(table)
-
-
-# ============================================================================
 # Status Commands
 # ============================================================================
 
@@ -851,95 +782,6 @@ def status():
                 console.print(
                     f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}"
                 )
-
-
-# ============================================================================
-# OAuth Login
-# ============================================================================
-
-provider_app = typer.Typer(help="Manage providers")
-app.add_typer(provider_app, name="provider")
-
-
-@provider_app.command("login")
-def provider_login(
-    provider: str = typer.Argument(
-        ..., help="OAuth provider (e.g. 'openai-codex', 'github-copilot')"
-    ),
-):
-    """Authenticate with an OAuth provider."""
-    from speckbot.providers.registry import PROVIDERS
-
-    key = provider.replace("-", "_")
-    spec = next((s for s in PROVIDERS if s.name == key and s.is_oauth), None)
-    if not spec:
-        names = ", ".join(s.name.replace("_", "-") for s in PROVIDERS if s.is_oauth)
-        console.print(f"[red]Unknown OAuth provider: {provider}[/red]  Supported: {names}")
-        raise typer.Exit(1)
-
-    handler = LOGIN_HANDLERS.get(spec.name)
-    if not handler:
-        console.print(f"[red]Login not implemented for {spec.label}[/red]")
-        raise typer.Exit(1)
-
-    console.print(f"{__logo__} OAuth Login - {spec.label}\n")
-    handler()
-
-
-# Login handlers - simple dict instead of decorator pattern
-def _login_openai_codex() -> None:
-    try:
-        from oauth_cli_kit import get_token, login_oauth_interactive
-
-        token = None
-        try:
-            token = get_token()
-        except Exception:
-            pass
-        if not (token and token.access):
-            console.print("[cyan]Starting interactive OAuth login...[/cyan]\n")
-            token = login_oauth_interactive(
-                print_fn=lambda s: console.print(s),
-                prompt_fn=lambda s: typer.prompt(s),
-            )
-        if not (token and token.access):
-            console.print("[red]✗ Authentication failed[/red]")
-            raise typer.Exit(1)
-        console.print(
-            f"[green]✓ Authenticated with OpenAI Codex[/green]  [dim]{token.account_id}[/dim]"
-        )
-    except ImportError:
-        console.print("[red]oauth_cli_kit not installed. Run: pip install oauth-cli-kit[/red]")
-        raise typer.Exit(1)
-
-
-def _login_github_copilot() -> None:
-    import asyncio
-
-    console.print("[cyan]Starting GitHub Copilot device flow...[/cyan]\n")
-
-    async def _trigger():
-        from litellm import acompletion
-
-        await acompletion(
-            model="github_copilot/gpt-4o",
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1,
-        )
-
-    try:
-        asyncio.run(_trigger())
-        console.print("[green]✓ Authenticated with GitHub Copilot[/green]")
-    except Exception as e:
-        console.print(f"[red]Authentication error: {e}[/red]")
-        raise typer.Exit(1)
-
-
-# Login handlers registry - simple dict for extensibility
-LOGIN_HANDLERS: dict[str, callable] = {
-    "openai_codex": _login_openai_codex,
-    "github_copilot": _login_github_copilot,
-}
 
 
 if __name__ == "__main__":
