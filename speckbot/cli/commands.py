@@ -333,10 +333,8 @@ def onboard(
 
     sync_workspace_templates(workspace_path)
 
-    agent_cmd = 'speckbot agent -m "Hello!"'
     gateway_cmd = "speckbot gateway"
     if config:
-        agent_cmd = agent_cmd + " --config " + str(config_path)
         gateway_cmd = gateway_cmd + " --config " + str(config_path)
 
     console.print(f"\n{__logo__} SpeckBot is ready!")
@@ -344,7 +342,7 @@ def onboard(
     console.print(f"  1. Add your secrets to [cyan]{env_path}[/cyan]")
     console.print("     Reference them in config.json using ${VAR_NAME}")
     console.print("     Example: 'api_key': '${OPENAI_API_KEY}'")
-    console.print(f"  2. Chat: [cyan]{agent_cmd}[/cyan]")
+    console.print(f"  2. Run: [cyan]{gateway_cmd}[/cyan]")
     console.print("\n[dim]Edit config.json to add Telegram/Discord channels[/dim]")
 
 
@@ -726,230 +724,8 @@ def gateway(
 # Agent Commands
 # ============================================================================
 
-
-@app.command()
-def agent(
-    message: str = typer.Option(None, "--message", "-m", help="Message to send to the agent"),
-    session_id: str = typer.Option("cli:direct", "--session", "-s", help="Session ID"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
-    markdown: bool = typer.Option(
-        True, "--markdown/--no-markdown", help="Render assistant output as Markdown"
-    ),
-    logs: bool = typer.Option(
-        False, "--logs/--no-logs", help="Show SpeckBot runtime logs during chat"
-    ),
-):
-    """Interact with the agent directly."""
-    from loguru import logger
-
-    from speckbot.agent.loop import AgentLoop
-    from speckbot.bus.queue import MessageBus
-    from speckbot.config.paths import get_cron_dir
-    from speckbot.cron.service import CronService
-
-    config = _load_runtime_config(config, workspace)
-    sync_workspace_templates(config.workspace_path)
-
-    bus = MessageBus()
-    provider = _make_provider(config)
-
-    # Create cron service for tool usage (no callback needed for CLI unless running)
-    cron_store_path = get_cron_dir() / "jobs.json"
-    cron = CronService(cron_store_path)
-
-    if logs:
-        logger.enable("speckbot")
-    else:
-        logger.disable("speckbot")
-
-    agent_loop = AgentLoop(
-        bus=bus,
-        provider=provider,
-        workspace=config.workspace_path,
-        model=config.agents.defaults.model,
-        max_iterations=config.agents.defaults.max_tool_iterations,
-        context_window_tokens=config.agents.defaults.context_window_tokens,
-        web_search_config=config.tools.web.search,
-        web_proxy=config.tools.web.proxy or None,
-        exec_config=config.tools.exec,
-        cron_service=cron,
-        restrict_to_workspace=config.tools.restrict_to_workspace,
-        mcp_servers=config.tools.mcp_servers,
-        channels_config=config.channels,
-        hooks_config=config.security.model_dump() if config.security else None,
-        context_level=config.agents.defaults.context_level,
-    )
-
-    # Shared reference for progress callbacks
-    _thinking: _ThinkingSpinner | None = None
-
-    async def _cli_progress(content: str, *, tool_hint: bool = False) -> None:
-        ch = agent_loop.channels_config
-        if ch and tool_hint and not ch.send_tool_hints:
-            return
-        if ch and not tool_hint and not ch.send_progress:
-            return
-        _print_cli_progress_line(content, _thinking)
-
-    if message:
-        # Single message mode — direct call, no bus needed
-        # Run Dream on startup if enabled
-        if config.dream.enabled:
-            from speckbot.agent.dream import run_dream
-
-            console.print("[dim]Running Dream memory cleanup...[/dim]")
-            asyncio.run(
-                run_dream(
-                    config.workspace_path,
-                    {
-                        "enabled": config.dream.enabled,
-                        "max_memory_lines": config.dream.max_memory_lines,
-                        "deduplicate": config.dream.deduplicate,
-                        "convert_dates": config.dream.convert_dates,
-                    },
-                )
-            )
-            console.print("[green]✓[/green] Dream completed")
-
-        async def run_once():
-            nonlocal _thinking
-            _thinking = _ThinkingSpinner(enabled=not logs)
-            with _thinking:
-                response = await agent_loop.process_direct(
-                    message, session_id, on_progress=_cli_progress
-                )
-            _thinking = None
-            _print_agent_response(response, render_markdown=markdown)
-            await agent_loop.close_mcp()
-
-        asyncio.run(run_once())
-    else:
-        # Interactive mode — route through bus like other channels
-        from speckbot.bus.events import InboundMessage
-
-        _init_prompt_session()
-        console.print(
-            f"{__logo__} Interactive mode (type [bold]exit[/bold] or [bold]Ctrl+C[/bold] to quit)\n"
-        )
-
-        if ":" in session_id:
-            cli_channel, cli_chat_id = session_id.split(":", 1)
-        else:
-            cli_channel, cli_chat_id = "cli", session_id
-
-        def _handle_signal(signum, frame):
-            sig_name = signal.Signals(signum).name
-            _restore_terminal()
-            console.print(f"\nReceived {sig_name}, goodbye!")
-            sys.exit(0)
-
-        signal.signal(signal.SIGINT, _handle_signal)
-        signal.signal(signal.SIGTERM, _handle_signal)
-
-        # Run Dream on startup if enabled
-        if config.dream.enabled:
-            from speckbot.agent.dream import run_dream
-
-            console.print("[dim]Running Dream memory cleanup...[/dim]")
-            asyncio.run(
-                run_dream(
-                    config.workspace_path,
-                    {
-                        "enabled": config.dream.enabled,
-                        "max_memory_lines": config.dream.max_memory_lines,
-                        "deduplicate": config.dream.deduplicate,
-                        "convert_dates": config.dream.convert_dates,
-                    },
-                )
-            )
-            console.print("[green]✓[/green] Dream completed")
-
-        async def run_interactive():
-            bus_task = asyncio.create_task(agent_loop.run())
-            turn_done = asyncio.Event()
-            turn_done.set()
-            turn_response: list[str] = []
-
-            async def _consume_outbound():
-                while True:
-                    try:
-                        msg = await asyncio.wait_for(bus.consume_outbound(), timeout=1.0)
-                        # Check progress messages using the progress_type field
-                        if msg.progress_type:
-                            ch = agent_loop.channels_config
-                            if msg.progress_type == "tool_hint" and ch and not ch.send_tool_hints:
-                                pass
-                            elif msg.progress_type == "thought" and ch and not ch.send_progress:
-                                pass
-                            else:
-                                await _print_interactive_progress_line(msg.content, _thinking)
-
-                        elif not turn_done.is_set():
-                            if msg.content:
-                                turn_response.append(msg.content)
-                            turn_done.set()
-                        elif msg.content:
-                            await _print_interactive_response(msg.content, render_markdown=markdown)
-
-                    except asyncio.TimeoutError:
-                        continue
-                    except asyncio.CancelledError:
-                        break
-
-            outbound_task = asyncio.create_task(_consume_outbound())
-
-            try:
-                while True:
-                    try:
-                        _flush_pending_tty_input()
-                        user_input = await _read_interactive_input_async()
-                        command = user_input.strip()
-                        if not command:
-                            continue
-
-                        if _is_exit_command(command):
-                            _restore_terminal()
-                            console.print("\nGoodbye!")
-                            break
-
-                        turn_done.clear()
-                        turn_response.clear()
-
-                        await bus.publish_inbound(
-                            InboundMessage(
-                                channel=cli_channel,
-                                sender_id="user",
-                                chat_id=cli_chat_id,
-                                content=user_input,
-                            )
-                        )
-
-                        nonlocal _thinking
-                        _thinking = _ThinkingSpinner(enabled=not logs)
-                        with _thinking:
-                            await turn_done.wait()
-                        _thinking = None
-
-                        if turn_response:
-                            _print_agent_response(turn_response[0], render_markdown=markdown)
-                    except KeyboardInterrupt:
-                        _restore_terminal()
-                        console.print("\nGoodbye!")
-                        break
-                    except EOFError:
-                        _restore_terminal()
-                        console.print("\nGoodbye!")
-                        break
-            finally:
-                agent_loop.stop()
-                outbound_task.cancel()
-                await asyncio.gather(bus_task, outbound_task, return_exceptions=True)
-                await agent_loop.close_mcp()
-
-        asyncio.run(run_interactive())
-
-
+# ============================================================================
+# Channel Commands
 # ============================================================================
 # Channel Commands
 # ============================================================================
