@@ -76,14 +76,9 @@ class MonologueSystem:
         self._running = value
 
     def restart_idle_timer(self) -> None:
-        """Restart the idle timer - cancels existing timer and starts a new one."""
-        if not self._enabled:
-            return
-        # Cancel existing timer if any
-        if self._idle_timer_task and not self._idle_timer_task.done():
-            self._idle_timer_task.cancel()
-        # Start new timer task
-        self._idle_timer_task = asyncio.create_task(self._idle_timer_run())
+        """Restart the idle timer - NO-OP since UnifiedTimer now handles timing."""
+        # UnifiedTimer handles monologue timing - this is kept for API compatibility only
+        pass
 
     async def write_journal(self, entry: str) -> None:
         """Write a journal entry to JOURNAL.md."""

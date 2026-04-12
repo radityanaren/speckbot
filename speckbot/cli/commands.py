@@ -666,15 +666,15 @@ def gateway(
         timer_config = {
             "heartbeat": {
                 "enabled": config.services.heartbeat_enabled,
-                "interval_seconds": config.services.heartbeat_interval_seconds,
+                "intervalSeconds": config.services.heartbeat_interval_seconds,
             },
             "monologue": {
                 "enabled": config.services.monologue_enabled,
-                "idle_seconds": config.services.monologue_idle_seconds,
+                "idleSeconds": config.services.monologue_idle_seconds,
             },
             "dream": {
                 "enabled": config.services.dream_enabled,
-                "sleep_interval_hours": config.services.dream_sleep_interval_hours,
+                "sleepIntervalHours": config.services.dream_sleep_interval_hours,
             },
         }
 
@@ -684,6 +684,9 @@ def gateway(
             heartbeat_service=heartbeat,
             monologue_service=agent.monologue,
         )
+
+        # Pass timer to agent so it can reset monologue counter on user messages
+        agent._unified_timer = timer
 
         try:
             await timer.start()

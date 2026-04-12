@@ -71,6 +71,7 @@ class AgentLoop:
         hooks_config: dict[str, Any] | None = None,
         monologue_config: dict | None = None,
         context_level: str = "medium",
+        unified_timer=None,  # For resetting monologue counter on user messages
     ):
         from speckbot.config.schema import ExecToolConfig, WebSearchConfig
 
@@ -129,6 +130,9 @@ class AgentLoop:
             exec_config=self.exec_config,
             restrict_to_workspace=restrict_to_workspace,
         )
+
+        # Unified timer reference for resetting monologue on user messages
+        self._unified_timer = unified_timer
 
         self._running = False
         self._mcp_servers = mcp_servers or {}
@@ -399,7 +403,7 @@ class AgentLoop:
         """Run the agent loop, dispatching messages as tasks to stay responsive to /stop."""
         self._running = True
         self.monologue.is_running = True
-        self.monologue.restart_idle_timer()
+        # Note: monologue timer is now handled by UnifiedTimer, not internal timer
         await self._connect_mcp()
         logger.info("Agent loop started")
 
@@ -496,8 +500,11 @@ class AgentLoop:
                     )
                 )
             finally:
-                # Restart idle timer AFTER message is saved to session (in _process_message)
-                self._restart_idle_timer()
+                # Reset monologue counter on user message (via UnifiedTimer if available)
+                if hasattr(self, "_unified_timer"):
+                    self._unified_timer.reset_monologue_timer()
+                elif self.monologue:
+                    self.monologue.restart_idle_timer()
 
     async def close_mcp(self) -> None:
         """Drain pending background archives, then close MCP connections."""
@@ -601,12 +608,9 @@ class AgentLoop:
         )
         return response.content if response else ""
 
-    def _restart_idle_timer(self) -> None:
-        """Restart the idle timer."""
-        self.monologue.restart_idle_timer()
+    # =============================================================================
 
 
-# =============================================================================
 # MessageHandler - Handles message processing logic (extracted from _process_message)
 # =============================================================================
 

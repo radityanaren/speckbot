@@ -46,26 +46,29 @@ class UnifiedTimer:
         self._monologue = monologue_service
         self._dream = dream_service
 
-        # Config - heartbeat
-        self._heartbeat_enabled = (
-            config.get("heartbeat", {}).get("enabled", True) if config else True
+        # Config - heartbeat (support both snake_case and camelCase)
+        hb_config = config.get("heartbeat", {}) if config else {}
+        self._heartbeat_enabled = hb_config.get("enabled") or hb_config.get(
+            "heartbeatEnabled", True
         )
-        self._heartbeat_interval = (
-            config.get("heartbeat", {}).get("interval_seconds", 1800) if config else 1800
-        )
-
-        # Config - monologue
-        self._monologue_enabled = (
-            config.get("monologue", {}).get("enabled", False) if config else False
-        )
-        self._monologue_idle = (
-            config.get("monologue", {}).get("idle_seconds", 300) if config else 300
+        self._heartbeat_interval = hb_config.get("intervalSeconds") or hb_config.get(
+            "interval_seconds", 1800
         )
 
-        # Config - dream (sleep timer)
-        self._dream_enabled = config.get("dream", {}).get("enabled", False) if config else False
-        self._dream_sleep_hours = (
-            config.get("dream", {}).get("sleep_interval_hours", 24) if config else 24
+        # Config - monologue (support both snake_case and camelCase)
+        mono_config = config.get("monologue", {}) if config else {}
+        self._monologue_enabled = mono_config.get("enabled") or mono_config.get(
+            "monologueEnabled", False
+        )
+        self._monologue_idle = mono_config.get("idleSeconds") or mono_config.get(
+            "idle_seconds", 300
+        )
+
+        # Config - dream (sleep timer, support both snake_case and camelCase)
+        dream_config = config.get("dream", {}) if config else {}
+        self._dream_enabled = dream_config.get("enabled") or dream_config.get("dreamEnabled", False)
+        self._dream_sleep_hours = dream_config.get("sleepIntervalHours") or dream_config.get(
+            "sleep_interval_hours", 24
         )
 
         # State
