@@ -118,16 +118,15 @@ class BashTool(Tool):
             env["PATH"] = env.get("PATH", "") + os.pathsep + self.path_append
 
         try:
-            # Use bash executable (with -c for command string)
-            bash_cmd = f'"{self.bash_path}" -c {repr(command)}'
+            # Use bash executable with -c flag via subprocess_exec (no shell interpretation)
+            bash_cmd = [self.bash_path, "-c", command]
 
-            process = await asyncio.create_subprocess_shell(
-                bash_cmd,
+            process = await asyncio.create_subprocess_exec(
+                *bash_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
                 env=env,
-                shell=False,  # Already wrapped in shell
             )
 
             try:

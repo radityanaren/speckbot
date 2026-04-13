@@ -55,26 +55,28 @@ def load_env(env_path: Path) -> dict[str, str]:
 
 
 def interpolate_env_vars(data: dict, env_vars: dict[str, str]) -> dict:
-    """Recursively replace ${VAR} with env var values.
+    """Recursively replace ${VAR} (or $(VAR)) with env var values.
 
     Args:
-        data: Config dict with potential ${VAR} placeholders
+        data: Config dict with potential ${VAR} or $(VAR) placeholders
         env_vars: Dict of env var names to values
 
     Returns:
         Data with placeholders replaced
 
     Raises:
-        ValueError: If a ${VAR} is used but not defined in .env and has no fallback
+        ValueError: If a ${VAR} or $(VAR) is used but not defined in .env and has no fallback
     """
     missing_vars = []
 
     if isinstance(data, str):
-        # Replace ${VAR} patterns
-        pattern = r"\$\{(\w+)\}"
+        # Replace ${VAR} or $(VAR) patterns
+        # Match: $VAR, $(VAR), ${VAR}
+        pattern = r"\$([a-zA-Z_][a-zA-Z0-9_]*)|\$\(([a-zA-Z_][a-zA-Z0-9_]*)\)|\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}"
 
         def replace_var(match):
-            var_name = match.group(1)
+            # Group 1: $VAR, Group 2: $(VAR), Group 3: ${VAR}
+            var_name = match.group(1) or match.group(2) or match.group(3)
             if var_name in env_vars:
                 return env_vars[var_name]
             # If not found, keep original and track for warning/error
