@@ -388,36 +388,31 @@ def _make_provider(config: Config):
     """Create the appropriate LLM provider from config."""
     from speckbot.providers.base import GenerationSettings
 
-    model = config.agents.defaults.model
-    provider_name = config.get_provider_name(model)
-    p = config.get_provider(model)
+    # Get provider by name from config
+    provider_name = config.get_provider_name()
+    p = config.get_provider()
 
-    # Custom: direct OpenAI-compatible endpoint, bypasses LiteLLM
-    if provider_name == "custom":
-        from speckbot.providers.custom_provider import CustomProvider
+    if not p:
+        console.print(f"[red]Error: Provider '{provider_name}' not found in config.[/red]")
+        console.print("Add a provider to the 'providers' list in config.json")
+        raise typer.Exit(1)
 
-        provider = CustomProvider(
-            api_key=p.api_key if p else "no-key",
-            api_base=config.get_api_base(model) or "http://localhost:8000/v1",
-            default_model=model,
-            extra_headers=p.extra_headers if p else None,
-        )
-    else:
-        from speckbot.providers.litellm_provider import LiteLLMProvider
-        from speckbot.providers.registry import find_by_name
+    # Get model from provider config
+    model = config.get_model()
+    if not model:
+        console.print(f"[red]Error: No model configured for provider '{provider_name}'.[/red]")
+        console.print("Set 'model' in your provider config")
+        raise typer.Exit(1)
 
-        spec = find_by_name(provider_name)
-        if not (p and p.api_key) and not (spec and spec.is_local):
-            console.print("[red]Error: No API key configured.[/red]")
-            console.print("Set one in ~/.speckbot/config.json under providers section")
-            raise typer.Exit(1)
-        provider = LiteLLMProvider(
-            api_key=p.api_key if p else None,
-            api_base=config.get_api_base(model),
-            default_model=model,
-            extra_headers=p.extra_headers if p else None,
-            provider_name=provider_name,
-        )
+    # Use CustomProvider for all custom providers (direct OpenAI-compatible)
+    from speckbot.providers.custom_provider import CustomProvider
+
+    provider = CustomProvider(
+        api_key=p.api_key or "no-key",
+        api_base=p.api_base or "http://localhost:8000/v1",
+        default_model=model,
+        extra_headers=p.extra_headers,
+    )
 
     defaults = config.agents.defaults
     provider.generation = GenerationSettings(
@@ -511,7 +506,7 @@ def gateway(
         bus=bus,
         provider=provider,
         workspace=config.workspace_path,
-        model=config.agents.defaults.model,
+        model=config.get_model(),
         max_iterations=config.agents.defaults.max_tool_iterations,
         context_window_tokens=config.agents.defaults.context_window_tokens,
         web_search_config=config.tools.web.search,
@@ -737,28 +732,21 @@ def status():
     )
 
     if config_path.exists():
-        from speckbot.providers.registry import PROVIDERS
+        # Show provider info from new config structure
+        active_provider = config.get_provider()
+        active_model = config.get_model()
+        console.print(f"Provider: {config.agents.defaults.provider}")
+        console.print(f"Model: {active_model or '[red]not set[/red]'}")
 
-        console.print(f"Model: {config.agents.defaults.model}")
-
-        # Check API keys from registry
-        for spec in PROVIDERS:
-            p = getattr(config.providers, spec.name, None)
-            if p is None:
-                continue
-            if spec.is_oauth:
-                console.print(f"{spec.label}: [green]✓ (OAuth)[/green]")
-            elif spec.is_local:
-                # Local deployments show api_base instead of api_key
-                if p.api_base:
-                    console.print(f"{spec.label}: [green]✓ {p.api_base}[/green]")
-                else:
-                    console.print(f"{spec.label}: [dim]not set[/dim]")
+        # List all configured providers
+        for p in config.providers:
+            if p.name == config.agents.defaults.provider:
+                status = f"[green]✓ (active)[/green]"
+            elif p.api_key:
+                status = "[green]✓[/green]"
             else:
-                has_key = bool(p.api_key)
-                console.print(
-                    f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}"
-                )
+                status = "[dim]not set[/dim]"
+            console.print(f"  {p.name}: {status}")
 
 
 if __name__ == "__main__":

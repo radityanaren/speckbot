@@ -8,7 +8,6 @@ from pydantic.alias_generators import to_camel
 from pydantic_settings import BaseSettings
 
 from speckbot.utils.constants import (
-    DEFAULT_MODEL,
     DEFAULT_MAX_TOKENS_AGENT,
     DEFAULT_CONTEXT_WINDOW_TOKENS,
     DEFAULT_AGENT_TEMPERATURE,
@@ -29,8 +28,7 @@ class AgentDefaults(Base):
     """Default agent configuration."""
 
     workspace: str = "~/.speckbot/workspace"
-    model: str = DEFAULT_MODEL
-    provider: str = "auto"
+    provider: str = "provider_a"  # Must reference a provider name from providers list
     max_output_tokens: int = DEFAULT_MAX_TOKENS_AGENT
     context_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS
     temperature: float = DEFAULT_AGENT_TEMPERATURE
@@ -90,27 +88,14 @@ class ChannelsConfig(Base):
 # ==================== PROVIDERS ====================
 
 
-class ProviderConfig(Base):
-    """LLM provider configuration."""
+class CustomProvider(Base):
+    """One custom provider entry - user defines name, API details, and default model."""
 
+    name: str = ""  # User sets: "provider_a", "nvidia", "work-gpt", etc.
     api_key: str = ""
     api_base: str | None = None
+    model: str = ""  # Default model for this provider
     extra_headers: dict[str, str] | None = None
-
-
-class ProvidersConfig(Base):
-    """Configuration for LLM providers."""
-
-    custom: ProviderConfig = Field(default_factory=ProviderConfig)
-    anthropic: ProviderConfig = Field(default_factory=ProviderConfig)
-    openai: ProviderConfig = Field(default_factory=ProviderConfig)
-    openrouter: ProviderConfig = Field(default_factory=ProviderConfig)
-    deepseek: ProviderConfig = Field(default_factory=ProviderConfig)
-    ollama: ProviderConfig = Field(default_factory=ProviderConfig)
-    gemini: ProviderConfig = Field(default_factory=ProviderConfig)
-
-
-# ==================== GATEWAY ====================
 
 
 class GatewayConfig(Base):
@@ -241,7 +226,9 @@ class Config(BaseSettings):
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
-    providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
+    providers: list[CustomProvider] = Field(
+        default_factory=lambda: [CustomProvider(name="provider_a")]
+    )
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
@@ -251,83 +238,37 @@ class Config(BaseSettings):
         """Get expanded workspace path."""
         return Path(self.agents.defaults.workspace).expanduser()
 
-    def _match_provider(
-        self, model: str | None = None
-    ) -> tuple["ProviderConfig | None", str | None]:
-        """Match provider config and its registry name."""
-        from speckbot.providers.registry import PROVIDERS
+    def get_provider(self) -> "CustomProvider | None":
+        """Get provider by name from agents.defaults.provider."""
+        provider_name = self.agents.defaults.provider
+        for p in self.providers:
+            if p.name == provider_name:
+                return p
+        return None
 
-        forced = self.agents.defaults.provider
-        if forced != "auto":
-            p = getattr(self.providers, forced, None)
-            return (p, forced) if p else (None, None)
+    def get_provider_name(self) -> str | None:
+        """Get provider name from agents.defaults.provider."""
+        return self.agents.defaults.provider
 
-        model_lower = (model or self.agents.defaults.model).lower()
-        model_normalized = model_lower.replace("-", "_")
-        model_prefix = model_lower.split("/", 1)[0] if "/" in model_lower else ""
-        normalized_prefix = model_prefix.replace("-", "_")
-
-        def _kw_matches(kw: str) -> bool:
-            kw = kw.lower()
-            return kw in model_lower or kw.replace("-", "_") in model_normalized
-
-        for spec in PROVIDERS:
-            p = getattr(self.providers, spec.name, None)
-            if p and model_prefix and normalized_prefix == spec.name:
-                if spec.is_oauth or spec.is_local or p.api_key:
-                    return p, spec.name
-
-        for spec in PROVIDERS:
-            p = getattr(self.providers, spec.name, None)
-            if p and any(_kw_matches(kw) for kw in spec.keywords):
-                if spec.is_oauth or spec.is_local or p.api_key:
-                    return p, spec.name
-
-        local_fallback: tuple[ProviderConfig, str] | None = None
-        for spec in PROVIDERS:
-            if not spec.is_local:
-                continue
-            p = getattr(self.providers, spec.name, None)
-            if not (p and p.api_base):
-                continue
-            if spec.detect_by_base_keyword and spec.detect_by_base_keyword in p.api_base:
-                return p, spec.name
-            if local_fallback is None:
-                local_fallback = (p, spec.name)
-        if local_fallback:
-            return local_fallback
-
-        for spec in PROVIDERS:
-            if spec.is_oauth:
-                continue
-            p = getattr(self.providers, spec.name, None)
-            if p and p.api_key:
-                return p, spec.name
-        return None, None
-
-    def get_provider(self, model: str | None = None) -> ProviderConfig | None:
-        p, _ = self._match_provider(model)
-        return p
-
-    def get_provider_name(self, model: str | None = None) -> str | None:
-        _, name = self._match_provider(model)
-        return name
-
-    def get_api_key(self, model: str | None = None) -> str | None:
-        p = self.get_provider(model)
+    def get_api_key(self) -> str | None:
+        """Get API key from the configured provider."""
+        p = self.get_provider()
         return p.api_key if p else None
 
-    def get_api_base(self, model: str | None = None) -> str | None:
-        from speckbot.providers.registry import find_by_name
+    def get_api_base(self) -> str | None:
+        """Get API base URL from the configured provider."""
+        p = self.get_provider()
+        return p.api_base if p else None
 
-        p, name = self._match_provider(model)
-        if p and p.api_base:
-            return p.api_base
-        if name:
-            spec = find_by_name(name)
-            if spec and (spec.is_gateway or spec.is_local) and spec.default_api_base:
-                return spec.default_api_base
-        return None
+    def get_model(self) -> str | None:
+        """Get model from the configured provider."""
+        p = self.get_provider()
+        return p.model if p else None
+
+    def get_extra_headers(self) -> dict[str, str] | None:
+        """Get extra headers from the configured provider."""
+        p = self.get_provider()
+        return p.extra_headers if p else None
 
     model_config = ConfigDict(env_prefix="SPECKBOT_", env_nested_delimiter="__")
 
