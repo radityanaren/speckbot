@@ -92,6 +92,9 @@ class CustomProvider(Base):
     """One custom provider entry - user defines name, API details, and default model."""
 
     name: str = ""  # User sets: "provider_a", "nvidia", "work-gpt", etc.
+    type: str = (
+        "custom"  # Provider type: "custom" (OpenAI-compatible), "litellm", or custom class name
+    )
     api_key: str = ""
     api_base: str | None = None
     model: str = ""  # Default model for this provider

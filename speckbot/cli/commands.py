@@ -404,15 +404,60 @@ def _make_provider(config: Config):
         console.print("Set 'model' in your provider config")
         raise typer.Exit(1)
 
-    # Use CustomProvider for all custom providers (direct OpenAI-compatible)
-    from speckbot.providers.custom_provider import CustomProvider
+    # Get provider type from config (default: "custom")
+    provider_type = p.type if p else "custom"
 
-    provider = CustomProvider(
-        api_key=p.api_key or "no-key",
-        api_base=p.api_base or "http://localhost:8000/v1",
-        default_model=model,
-        extra_headers=p.extra_headers,
-    )
+    # Create provider based on type
+    if provider_type == "custom":
+        # Direct OpenAI-compatible endpoint
+        from speckbot.providers.custom_provider import CustomProvider
+
+        provider = CustomProvider(
+            api_key=p.api_key or "no-key",
+            api_base=p.api_base or "http://localhost:8000/v1",
+            default_model=model,
+            extra_headers=p.extra_headers,
+        )
+    elif provider_type == "litellm":
+        # LiteLLM provider - handles many backends
+        from speckbot.providers.litellm_provider import LiteLLMProvider
+
+        if not p.api_key:
+            console.print(
+                f"[red]Error: No API key configured for provider '{provider_name}'.[/red]"
+            )
+            raise typer.Exit(1)
+
+        provider = LiteLLMProvider(
+            api_key=p.api_key,
+            api_base=p.api_base,
+            default_model=model,
+            extra_headers=p.extra_headers,
+            provider_name=provider_name,
+        )
+    else:
+        # Custom provider class - try to import from speckbot.providers
+        try:
+            from speckbot.providers import CustomProvider as BaseCustomProvider
+
+            # Try to import the custom provider class
+            provider_class = getattr(
+                __import__(f"speckbot.providers.{provider_type}", fromlist=[provider_type]),
+                provider_type,
+            )
+
+            provider = provider_class(
+                api_key=p.api_key or "no-key",
+                api_base=p.api_base,
+                default_model=model,
+                extra_headers=p.extra_headers,
+            )
+        except (ImportError, AttributeError) as e:
+            console.print(f"[red]Error: Custom provider type '{provider_type}' not found.[/red]")
+            console.print(
+                f"Available types: 'custom', 'litellm', or Python class in speckbot/providers/"
+            )
+            raise typer.Exit(1)
 
     defaults = config.agents.defaults
     provider.generation = GenerationSettings(
