@@ -1,7 +1,8 @@
-"""Shell execution tool."""
+"""Bash execution tool - Unix-based shell commands."""
 
 import asyncio
 import os
+import platform
 import re
 from pathlib import Path
 from typing import Any
@@ -10,8 +11,8 @@ from speckbot.agent.tools.base import Tool
 from speckbot.utils.constants import SHELL_MAX_TIMEOUT, SHELL_MAX_OUTPUT
 
 
-class ExecTool(Tool):
-    """Tool to execute shell commands."""
+class BashTool(Tool):
+    """Execute Unix shell commands."""
 
     def __init__(
         self,
@@ -21,31 +22,52 @@ class ExecTool(Tool):
         allow_patterns: list[str] | None = None,
         restrict_to_workspace: bool = False,
         path_append: str = "",
+        bash_path: str | None = None,
     ):
         self.timeout = timeout
         self.working_dir = working_dir
         self.deny_patterns = deny_patterns or [
-            r"\brm\s+-[rf]{1,2}\b",          # rm -r, rm -rf, rm -fr
-            r"\bdel\s+/[fq]\b",              # del /f, del /q
-            r"\brmdir\s+/s\b",               # rmdir /s
-            r"(?:^|[;&|]\s*)format\b",       # format (as standalone command only)
-            r"\b(mkfs|diskpart)\b",          # disk operations
-            r"\bdd\s+if=",                   # dd
-            r">\s*/dev/sd",                  # write to disk
+            r"\brm\s+-[rf]{1,2}\b",  # rm -r, rm -rf, rm -fr
+            r"\bdel\s+/[fq]\b",  # del /f, del /q
+            r"\brmdir\s+/s\b",  # rmdir /s
+            r"(?:^|[;&|]\s*)format\b",  # format (as standalone command only)
+            r"\b(mkfs|diskpart)\b",  # disk operations
+            r"\bdd\s+if=",  # dd
+            r">\s*/dev/sd",  # write to disk
             r"\b(shutdown|reboot|poweroff)\b",  # system power
-            r":\(\)\s*\{.*\};\s*:",          # fork bomb
+            r":\(\)\s*\{.*\};\s*:",  # fork bomb
         ]
         self.allow_patterns = allow_patterns or []
         self.restrict_to_workspace = restrict_to_workspace
         self.path_append = path_append
+        self.bash_path = bash_path or self._detect_bash_path()
+
+    def _detect_bash_path(self) -> str:
+        """Detect the appropriate bash executable for the platform."""
+        system = platform.system()
+
+        if system == "Windows":
+            # Try common Git Bash locations on Windows
+            candidates = [
+                "C:\\Program Files\\Git\\bin\\bash.exe",
+                "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+                os.path.expanduser("~\\AppData\\Local\\Programs\\Git\\bin\\bash.exe"),
+                "bash.exe",  # If Git Bash is in PATH
+            ]
+            for path in candidates:
+                if os.path.exists(path):
+                    return path
+            return "bash.exe"  # Fallback to PATH
+        else:
+            return "/bin/bash"  # POSIX systems
 
     @property
     def name(self) -> str:
-        return "exec"
+        return "bash"
 
     @property
     def description(self) -> str:
-        return "Execute a shell command and return its output. Use with caution."
+        return "Execute Unix shell commands (bash)."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -54,7 +76,7 @@ class ExecTool(Tool):
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The shell command to execute",
+                    "description": "The Unix shell command to execute (bash syntax)",
                 },
                 "working_dir": {
                     "type": "string",
@@ -74,9 +96,16 @@ class ExecTool(Tool):
         }
 
     async def execute(
-        self, command: str, working_dir: str | None = None,
-        timeout: int | None = None, **kwargs: Any,
+        self,
+        command: str,
+        working_dir: str | None = None,
+        timeout: int | None = None,
+        **kwargs: Any,
     ) -> str:
+        # Check if bash is available
+        if not self._check_bash_available():
+            return "Error: Bash executable not found. On Windows, please install Git Bash or set bash_path in config."
+
         cwd = working_dir or self.working_dir or os.getcwd()
         guard_error = self._guard_command(command, cwd)
         if guard_error:
@@ -89,12 +118,16 @@ class ExecTool(Tool):
             env["PATH"] = env.get("PATH", "") + os.pathsep + self.path_append
 
         try:
+            # Use bash executable (with -c for command string)
+            bash_cmd = f'"{self.bash_path}" -c {repr(command)}'
+
             process = await asyncio.create_subprocess_shell(
-                command,
+                bash_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
                 env=env,
+                shell=False,  # Already wrapped in shell
             )
 
             try:
@@ -139,6 +172,26 @@ class ExecTool(Tool):
         except Exception as e:
             return f"Error executing command: {str(e)}"
 
+    def _check_bash_available(self) -> bool:
+        """Check if bash executable exists."""
+        if platform.system() == "Windows":
+            # On Windows, check if bash exists at configured path or in PATH
+            if self.bash_path != "bash.exe" and os.path.exists(self.bash_path):
+                return True
+            # Try to run bash --version to check availability
+            try:
+                process = asyncio.run(
+                    asyncio.create_subprocess_shell(
+                        f'"{self.bash_path}" --version',
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                )
+                return process.returncode == 0
+            except Exception:
+                return False
+        return True  # On POSIX, assume bash exists
+
     def _guard_command(self, command: str, cwd: str) -> str | None:
         """Best-effort safety guard for potentially destructive commands."""
         cmd = command.strip()
@@ -153,6 +206,7 @@ class ExecTool(Tool):
                 return "Error: Command blocked by safety guard (not in allowlist)"
 
         from speckbot.security.network import contains_internal_url
+
         if contains_internal_url(cmd):
             return "Error: Command blocked by safety guard (internal/private URL detected)"
 
@@ -175,7 +229,11 @@ class ExecTool(Tool):
 
     @staticmethod
     def _extract_absolute_paths(command: str) -> list[str]:
-        win_paths = re.findall(r"[A-Za-z]:\\[^\s\"'|><;]+", command)   # Windows: C:\...
-        posix_paths = re.findall(r"(?:^|[\s|>'\"])(/[^\s\"'>;|<]+)", command) # POSIX: /absolute only
-        home_paths = re.findall(r"(?:^|[\s|>'\"])(~[^\s\"'>;|<]*)", command) # POSIX/Windows home shortcut: ~
+        win_paths = re.findall(r"[A-Za-z]:\\[^\s\"'|><;]+", command)  # Windows: C:\...
+        posix_paths = re.findall(
+            r"(?:^|[\s|>'\"])(/[^\s\"'>;|<]+)", command
+        )  # POSIX: /absolute only
+        home_paths = re.findall(
+            r"(?:^|[\s|>'\"])(~[^\s\"'>;|<]*)", command
+        )  # POSIX/Windows home shortcut: ~
         return win_paths + posix_paths + home_paths

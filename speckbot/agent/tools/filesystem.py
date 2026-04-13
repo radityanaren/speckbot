@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from speckbot.agent.tools.base import Tool
-from speckbot.utils.constants import FILESYSTEM_MAX_CHARS, FILESYSTEM_DEFAULT_LIMIT, LIST_DIR_DEFAULT_MAX
+from speckbot.utils.constants import (
+    FILESYSTEM_MAX_CHARS,
+    FILESYSTEM_DEFAULT_LIMIT,
+    LIST_DIR_DEFAULT_MAX,
+)
 
 
 def _resolve_path(
@@ -55,8 +59,9 @@ class _FsTool(Tool):
 # read_file
 # ---------------------------------------------------------------------------
 
+
 class ReadFileTool(_FsTool):
-    """Read file contents with optional line-based pagination."""
+    """Read file contents."""
 
     @property
     def name(self) -> str:
@@ -64,10 +69,7 @@ class ReadFileTool(_FsTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Read the contents of a file. Returns numbered lines. "
-            "Use offset and limit to paginate through large files."
-        )
+        return "Read file contents with optional line pagination."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -89,7 +91,9 @@ class ReadFileTool(_FsTool):
             "required": ["path"],
         }
 
-    async def execute(self, path: str, offset: int = 1, limit: int | None = None, **kwargs: Any) -> str:
+    async def execute(
+        self, path: str, offset: int = 1, limit: int | None = None, **kwargs: Any
+    ) -> str:
         try:
             fp = self._resolve(path)
             if not fp.exists():
@@ -137,6 +141,7 @@ class ReadFileTool(_FsTool):
 # write_file
 # ---------------------------------------------------------------------------
 
+
 class WriteFileTool(_FsTool):
     """Write content to a file."""
 
@@ -146,7 +151,7 @@ class WriteFileTool(_FsTool):
 
     @property
     def description(self) -> str:
-        return "Write content to a file at the given path. Creates parent directories if needed."
+        return "Write content to a file. Creates parent directories if needed."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -175,6 +180,7 @@ class WriteFileTool(_FsTool):
 # edit_file
 # ---------------------------------------------------------------------------
 
+
 def _find_match(content: str, old_text: str) -> tuple[str | None, int]:
     """Locate old_text in content: exact first, then line-trimmed sliding window.
 
@@ -202,7 +208,7 @@ def _find_match(content: str, old_text: str) -> tuple[str | None, int]:
 
 
 class EditFileTool(_FsTool):
-    """Edit a file by replacing text with fallback matching."""
+    """Edit a file by replacing text."""
 
     @property
     def name(self) -> str:
@@ -210,11 +216,7 @@ class EditFileTool(_FsTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Edit a file by replacing old_text with new_text. "
-            "Supports minor whitespace/line-ending differences. "
-            "Set replace_all=true to replace every occurrence."
-        )
+        return "Edit a file by replacing old_text with new_text. Set replace_all=true for all occurrences."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -233,8 +235,12 @@ class EditFileTool(_FsTool):
         }
 
     async def execute(
-        self, path: str, old_text: str, new_text: str,
-        replace_all: bool = False, **kwargs: Any,
+        self,
+        path: str,
+        old_text: str,
+        new_text: str,
+        replace_all: bool = False,
+        **kwargs: Any,
     ) -> str:
         try:
             fp = self._resolve(path)
@@ -255,7 +261,11 @@ class EditFileTool(_FsTool):
                 )
 
             norm_new = new_text.replace("\r\n", "\n")
-            new_content = content.replace(match, norm_new) if replace_all else content.replace(match, norm_new, 1)
+            new_content = (
+                content.replace(match, norm_new)
+                if replace_all
+                else content.replace(match, norm_new, 1)
+            )
             if uses_crlf:
                 new_content = new_content.replace("\n", "\r\n")
 
@@ -279,27 +289,43 @@ class EditFileTool(_FsTool):
                 best_ratio, best_start = ratio, i
 
         if best_ratio > 0.5:
-            diff = "\n".join(difflib.unified_diff(
-                old_lines, lines[best_start : best_start + window],
-                fromfile="old_text (provided)",
-                tofile=f"{path} (actual, line {best_start + 1})",
-                lineterm="",
-            ))
+            diff = "\n".join(
+                difflib.unified_diff(
+                    old_lines,
+                    lines[best_start : best_start + window],
+                    fromfile="old_text (provided)",
+                    tofile=f"{path} (actual, line {best_start + 1})",
+                    lineterm="",
+                )
+            )
             return f"Error: old_text not found in {path}.\nBest match ({best_ratio:.0%} similar) at line {best_start + 1}:\n{diff}"
-        return f"Error: old_text not found in {path}. No similar text found. Verify the file content."
+        return (
+            f"Error: old_text not found in {path}. No similar text found. Verify the file content."
+        )
 
 
 # ---------------------------------------------------------------------------
 # list_dir
 # ---------------------------------------------------------------------------
 
+
 class ListDirTool(_FsTool):
-    """List directory contents with optional recursion."""
+    """List directory contents."""
 
     _IGNORE_DIRS = {
-        ".git", "node_modules", "__pycache__", ".venv", "venv",
-        "dist", "build", ".tox", ".mypy_cache", ".pytest_cache",
-        ".ruff_cache", ".coverage", "htmlcov",
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "dist",
+        "build",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".coverage",
+        "htmlcov",
     }
 
     @property
@@ -308,11 +334,7 @@ class ListDirTool(_FsTool):
 
     @property
     def description(self) -> str:
-        return (
-            "List the contents of a directory. "
-            "Set recursive=true to explore nested structure. "
-            "Common noise directories (.git, node_modules, __pycache__, etc.) are auto-ignored."
-        )
+        return "List directory contents. Use recursive=true for nested structure."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -334,8 +356,11 @@ class ListDirTool(_FsTool):
         }
 
     async def execute(
-        self, path: str, recursive: bool = False,
-        max_entries: int | None = None, **kwargs: Any,
+        self,
+        path: str,
+        recursive: bool = False,
+        max_entries: int | None = None,
+        **kwargs: Any,
     ) -> str:
         try:
             dp = self._resolve(path)

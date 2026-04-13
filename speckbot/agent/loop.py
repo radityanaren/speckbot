@@ -22,7 +22,7 @@ from speckbot.agent.tools.cron import CronTool
 from speckbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from speckbot.agent.tools.message import MessageTool
 from speckbot.agent.tools.registry import ToolRegistry
-from speckbot.agent.tools.shell import ExecTool
+from speckbot.agent.tools.bash import BashTool
 from speckbot.agent.tools.spawn import SpawnTool
 from speckbot.agent.tools.web import WebFetchTool, WebSearchTool
 from speckbot.bus.events import InboundMessage, OutboundMessage
@@ -203,11 +203,12 @@ class AgentLoop:
         for cls in (WriteFileTool, EditFileTool, ListDirTool):
             self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
         self.tools.register(
-            ExecTool(
+            BashTool(
                 working_dir=str(self.workspace),
                 timeout=self.exec_config.timeout,
                 restrict_to_workspace=self.restrict_to_workspace,
                 path_append=self.exec_config.path_append,
+                bash_path=self.exec_config.bash_path,
             )
         )
         self.tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))

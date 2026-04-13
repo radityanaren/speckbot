@@ -194,9 +194,12 @@ class ToolsConfig(Base):
     web_search_api_key: str = ""
     web_search_base_url: str = ""
     web_search_max_results: int = 5
-    # Shell exec tool
+    # Bash exec tool
     exec_timeout: int = 60
     exec_path_append: str = ""
+    exec_bash_path: str | None = (
+        None  # Custom bash path (e.g., "C:\Program Files\Git\bin\bash.exe")
+    )
     # MCP
     restrict_to_workspace: bool = False
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=_default_mcp_servers)
@@ -220,6 +223,7 @@ class ToolsConfig(Base):
         return ExecToolConfig(
             timeout=self.exec_timeout,
             path_append=self.exec_path_append,
+            bash_path=self.exec_bash_path,
         )
 
     @property
@@ -295,6 +299,7 @@ class ExecToolConfig(Base):
 
     timeout: int = 60
     path_append: str = ""
+    bash_path: str | None = None
 
 
 class WebToolsConfig(Base):
