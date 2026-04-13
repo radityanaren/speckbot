@@ -34,8 +34,8 @@ class ChannelManager:
         """Initialize channels discovered via pkgutil scan + entry_points plugins."""
         from speckbot.channels.registry import discover_all
 
-        # Get transcription API key from tools.transcription.groq_api_key
-        transcription_key = self.config.tools.transcription.groq_api_key
+        # Get transcription API key from config.transcription.api_key (new schema)
+        transcription_key = self.config.transcription.api_key if self.config.transcription else None
 
         for name, cls in discover_all().items():
             section = getattr(self.config.channels, name, None)
@@ -117,14 +117,14 @@ class ChannelManager:
 
         while True:
             try:
-                msg = await asyncio.wait_for(
-                    self.bus.consume_outbound(),
-                    timeout=1.0
-                )
+                msg = await asyncio.wait_for(self.bus.consume_outbound(), timeout=1.0)
 
                 # Check progress messages (thoughts and tool hints)
                 if msg.progress_type:
-                    if msg.progress_type == "tool_hint" and not self.config.channels.send_tool_hints:
+                    if (
+                        msg.progress_type == "tool_hint"
+                        and not self.config.channels.send_tool_hints
+                    ):
                         continue
                     if msg.progress_type == "thought" and not self.config.channels.send_progress:
                         continue
@@ -150,10 +150,7 @@ class ChannelManager:
     def get_status(self) -> dict[str, Any]:
         """Get status of all channels."""
         return {
-            name: {
-                "enabled": True,
-                "running": channel.is_running
-            }
+            name: {"enabled": True, "running": channel.is_running}
             for name, channel in self.channels.items()
         }
 
