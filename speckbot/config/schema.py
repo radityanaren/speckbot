@@ -144,9 +144,21 @@ class WebSearchConfig(Base):
 
 
 class TranscriptionConfig(Base):
-    """Audio transcription via Groq Whisper."""
+    """
+    Static transcription configuration - separate from providers list.
 
-    groq_api_key: str = ""
+    This is a static config (not scalable like custom providers).
+    Uses LiteLLM to support multiple transcription backends:
+    openai, azure, deepgram, groq, fireworks_ai, mistral, ovhcloud, vertex_ai, gemini
+    """
+
+    # API Configuration - can be different from main providers
+    api_key: str = ""
+    api_base: str | None = None
+    # Model - auto-routes to correct provider based on model string
+    # Examples: "whisper-1", "groq/whisper-large-v3", "deepgram/nova-2"
+    model: str = "whisper-1"
+    extra_headers: dict[str, str] | None = None
 
 
 class MCPServerConfig(Base):
@@ -185,8 +197,6 @@ class ToolsConfig(Base):
     # Shell exec tool
     exec_timeout: int = 60
     exec_path_append: str = ""
-    # Transcription
-    transcription_groq_api_key: str = ""
     # MCP
     restrict_to_workspace: bool = False
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=_default_mcp_servers)
@@ -215,9 +225,8 @@ class ToolsConfig(Base):
     @property
     def transcription(self) -> "TranscriptionConfig":
         """Return TranscriptionConfig for backward compatibility."""
-        return TranscriptionConfig(
-            groq_api_key=self.transcription_groq_api_key,
-        )
+        # This property is deprecated - use root Config.transcription instead
+        return TranscriptionConfig()
 
 
 # ==================== ROOT CONFIG ====================
@@ -232,6 +241,9 @@ class Config(BaseSettings):
     providers: list[CustomProvider] = Field(
         default_factory=lambda: [CustomProvider(name="provider_a")]
     )
+    # Static transcription config - separate from providers list
+    # Uses LiteLLM to support multiple backends (openai, azure, deepgram, groq, etc.)
+    transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)

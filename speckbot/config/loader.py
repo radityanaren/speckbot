@@ -182,4 +182,14 @@ def _migrate_config(data: dict) -> dict:
     exec_cfg = tools.get("exec", {})
     if "restrictToWorkspace" in exec_cfg and "restrictToWorkspace" not in tools:
         tools["restrictToWorkspace"] = exec_cfg.pop("restrictToWorkspace")
+
+    # Migrate old transcription_groq_api_key to new transcription config
+    if "transcription" not in data:
+        transcription_config = {}
+        # Check old location: tools.transcription_groq_api_key
+        if "transcription_groq_api_key" in tools:
+            transcription_config["api_key"] = tools.pop("transcription_groq_api_key")
+            transcription_config["model"] = "whisper-large-v3"  # Default to Groq Whisper
+        data["transcription"] = transcription_config
+
     return data
