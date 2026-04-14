@@ -148,9 +148,9 @@ class AgentLoop:
             model=self.model,
             sessions=self.sessions,
             active_window_tokens=active_window_tokens,
-            context_headroom=context_headroom,
             build_messages=self.context.build_messages,
             get_tool_definitions=self.tools.get_definitions,
+            context_headroom=context_headroom,
         )
         self._register_default_tools()
 

@@ -491,9 +491,9 @@ class MemoryConsolidator:
         model: str,
         sessions: SessionManager,
         active_window_tokens: int,
-        context_headroom: int = 20,
         build_messages: Callable[..., list[dict[str, Any]]],
         get_tool_definitions: Callable[[], list[dict[str, Any]]],
+        context_headroom: int = 20,
     ):
         self.store = MemoryStore(workspace)
         self.provider = provider
@@ -563,7 +563,7 @@ class MemoryConsolidator:
         """
         Archive old messages until prompt fits within active_window_tokens.
         Uses conveyor belt: messages are archived to JSONL, user reads on-demand.
-        
+
         Safety: Uses context_headroom to calculate effective threshold, giving
         a buffer for estimation errors and preventing overflow crashes.
         """
@@ -609,7 +609,9 @@ class MemoryConsolidator:
                     return
 
                 # Find boundary at user turn
-                boundary = self.pick_consolidation_boundary(session, max(1, estimated - effective_threshold))
+                boundary = self.pick_consolidation_boundary(
+                    session, max(1, estimated - effective_threshold)
+                )
                 if boundary is None:
                     logger.debug(
                         "Conveyor belt: no safe boundary for {} (round {})",
