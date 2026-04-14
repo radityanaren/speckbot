@@ -32,6 +32,7 @@ class AgentDefaults(Base):
     max_output_tokens: int = DEFAULT_MAX_TOKENS_AGENT
     active_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS
     context_headroom: int = 20  # Headroom percentage for conveyor belt safety buffer
+    tool_result_max_chars: int = 10_000  # Max characters for tool result truncation
     temperature: float = DEFAULT_AGENT_TEMPERATURE
     max_tool_iterations: int = DEFAULT_MAX_TOOL_ITERATIONS
     reasoning_effort: str | None = None

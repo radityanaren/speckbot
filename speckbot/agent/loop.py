@@ -61,6 +61,7 @@ class AgentLoop:
         max_iterations: int = 40,
         active_window_tokens: int = 65_536,
         context_headroom: int = 20,
+        tool_result_max_chars: int = 10_000,
         web_search_config: WebSearchConfig | None = None,
         web_proxy: str | None = None,
         exec_config: ExecToolConfig | None = None,
@@ -83,6 +84,7 @@ class AgentLoop:
         self.max_iterations = max_iterations
         self.active_window_tokens = active_window_tokens
         self.context_headroom = context_headroom
+        self.tool_result_max_chars = tool_result_max_chars
         self.web_search_config = web_search_config or WebSearchConfig()
         self.web_proxy = web_proxy
         self.exec_config = exec_config or ExecToolConfig()
@@ -118,6 +120,8 @@ class AgentLoop:
             enabled=self.monologue._enabled,
             idle_seconds=self.monologue._idle_seconds,
         )
+        # Configure tool result max chars for the agent's knowledge
+        self.context.set_tool_result_max_chars(self.tool_result_max_chars)
 
         self.subagents = SubagentManager(
             provider=provider,
@@ -556,9 +560,9 @@ class AgentLoop:
             if (
                 role == "tool"
                 and isinstance(content, str)
-                and len(content) > self._TOOL_RESULT_MAX_CHARS
+                and len(content) > self.tool_result_max_chars
             ):
-                entry["content"] = content[: self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
+                entry["content"] = content[: self.tool_result_max_chars] + "\n... (truncated)"
             elif role == "user":
                 if isinstance(content, str) and content.startswith(
                     ContextBuilder._RUNTIME_CONTEXT_TAG
@@ -938,10 +942,10 @@ class MessageHandler:
             if (
                 role == "tool"
                 and isinstance(content, str)
-                and len(content) > self._agent._TOOL_RESULT_MAX_CHARS
+                and len(content) > self._agent.tool_result_max_chars
             ):
                 entry["content"] = (
-                    content[: self._agent._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
+                    content[: self._agent.tool_result_max_chars] + "\n... (truncated)"
                 )
             elif role == "user":
                 if isinstance(content, str) and content.startswith(

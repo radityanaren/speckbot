@@ -555,6 +555,7 @@ def gateway(
         max_iterations=config.agents.defaults.max_tool_iterations,
         active_window_tokens=config.agents.defaults.active_window_tokens,
         context_headroom=config.agents.defaults.context_headroom,
+        tool_result_max_chars=config.agents.defaults.tool_result_max_chars,
         web_search_config=config.tools.web.search,
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,

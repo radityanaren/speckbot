@@ -35,11 +35,16 @@ class ContextBuilder:
         self.skills = SkillsLoader(workspace)
         self.security = security  # Shared security service
         self.monologue_enabled = False  # Set by AgentLoop if enabled
+        self.tool_result_max_chars = 10_000  # Default, set by AgentLoop
 
     def set_monologue_config(self, enabled: bool, idle_seconds: int = 300) -> None:
         """Configure monologue system for identity prompt."""
         self.monologue_enabled = enabled
         self.monologue_idle_seconds = idle_seconds
+
+    def set_tool_result_max_chars(self, max_chars: int) -> None:
+        """Set the max characters for tool result truncation."""
+        self.tool_result_max_chars = max_chars
 
     def build_system_prompt(
         self,
@@ -116,6 +121,10 @@ Skills with available="false" need dependencies installed first.
 ## Security
 - Dangerous commands/patterns are blocked.
 - If output shows "[Output filtered by security]", it was blocked - don't retry.
+
+## Tool Result Limits
+- Tool results exceeding {self.tool_result_max_chars:,} characters will be truncated.
+- Design queries to fit within this limit when possible.
 
 ## Guidelines
 - Read before edit. Re-read after write.
