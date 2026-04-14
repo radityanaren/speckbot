@@ -490,7 +490,7 @@ class MemoryConsolidator:
         provider: LLMProvider,
         model: str,
         sessions: SessionManager,
-        context_window_tokens: int,
+        active_window_tokens: int,
         build_messages: Callable[..., list[dict[str, Any]]],
         get_tool_definitions: Callable[[], list[dict[str, Any]]],
     ):
@@ -498,10 +498,11 @@ class MemoryConsolidator:
         self.provider = provider
         self.model = model
         self.sessions = sessions
-        self.context_window_tokens = context_window_tokens
+        self.active_window_tokens = active_window_tokens
         self._build_messages = build_messages
         self._get_tool_definitions = get_tool_definitions
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+        self._checked_initial_overflow: set[str] = set()  # Track checked sessions
 
     def get_lock(self, session_key: str) -> asyncio.Lock:
         """Return the shared consolidation lock for one session."""
@@ -556,64 +557,76 @@ class MemoryConsolidator:
         # This is a no-op placeholder since archiving happens in maybe_archive_by_tokens
         return True
 
-    async def maybe_archive_by_tokens(self, session: Session) -> None:
-        """
-        Archive old messages until prompt fits within target tokens.
-        Uses conveyor belt: messages are archived to JSONL, user reads on-demand.
-        """
-        if not session.messages or self.context_window_tokens <= 0:
+
+async def maybe_archive_by_tokens(self, session: Session) -> None:
+    """
+    Archive old messages until prompt fits within active_window_tokens.
+    Uses conveyor belt: messages are archived to JSONL, user reads on-demand.
+    """
+    if not session.messages or self.active_window_tokens <= 0:
+        return
+
+    lock = self.get_lock(session.key)
+    async with lock:
+        threshold = self.active_window_tokens  # Archive when > this
+        estimated, source = self.estimate_session_prompt_tokens(session)
+        if estimated <= 0:
             return
 
-        lock = self.get_lock(session.key)
-        async with lock:
-            target = self.context_window_tokens // 2  # Archive when >50% used
+        # Check if initial context (system + tools + bootstrap) already exceeds threshold
+        if session.key not in self._checked_initial_overflow:
+            self._checked_initial_overflow.add(session.key)
+            if estimated > threshold:
+                raise ValueError(
+                    f"Initial context ({estimated} tokens) exceeds active_window_tokens "
+                    f"({threshold}). Your system prompt, tools, and bootstrap files are "
+                    f"too large for this window. Increase active_window_tokens to at "
+                    f"least {estimated + 1000} tokens."
+                )
+
+        # If still under threshold, no archiving needed
+        if estimated < threshold:
+            logger.debug(
+                "Conveyor belt idle {}: {}/{}",
+                session.key,
+                estimated,
+                threshold,
+            )
+            return
+
+        # Archive messages until under threshold
+        for round_num in range(self._max_rounds):
+            if estimated <= threshold:
+                return
+
+            # Find boundary at user turn
+            boundary = self.pick_consolidation_boundary(session, max(1, estimated - threshold))
+            if boundary is None:
+                logger.debug(
+                    "Conveyor belt: no safe boundary for {} (round {})",
+                    session.key,
+                    round_num,
+                )
+                return
+
+            end_idx = boundary[0]
+            chunk = session.messages[session.last_archived : end_idx]
+            if not chunk:
+                return
+
+            logger.info(
+                "Conveyor belt round {} for {}: archiving {} msgs, {}/{}",
+                round_num,
+                session.key,
+                len(chunk),
+                estimated,
+                threshold,
+            )
+
+            # Archive to JSONL (no LLM)
+            self.sessions.archive_session(session)
+            self.sessions.save(session)
+
             estimated, source = self.estimate_session_prompt_tokens(session)
             if estimated <= 0:
                 return
-
-            # If still under threshold, no archiving needed
-            if estimated < target:
-                logger.debug(
-                    "Conveyor belt idle {}: {}/{}",
-                    session.key,
-                    estimated,
-                    target,
-                )
-                return
-
-            # Archive messages until under threshold
-            for round_num in range(self._max_rounds):
-                if estimated <= target:
-                    return
-
-                # Find boundary at user turn
-                boundary = self.pick_consolidation_boundary(session, max(1, estimated - target))
-                if boundary is None:
-                    logger.debug(
-                        "Conveyor belt: no safe boundary for {} (round {})",
-                        session.key,
-                        round_num,
-                    )
-                    return
-
-                end_idx = boundary[0]
-                chunk = session.messages[session.last_archived : end_idx]
-                if not chunk:
-                    return
-
-                logger.info(
-                    "Conveyor belt round {} for {}: archiving {} msgs, {}/{}",
-                    round_num,
-                    session.key,
-                    len(chunk),
-                    estimated,
-                    target,
-                )
-
-                # Archive to JSONL (no LLM)
-                self.sessions.archive_session(session)
-                self.sessions.save(session)
-
-                estimated, source = self.estimate_session_prompt_tokens(session)
-                if estimated <= 0:
-                    return

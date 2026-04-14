@@ -553,7 +553,7 @@ def gateway(
         workspace=config.workspace_path,
         model=config.get_model(),
         max_iterations=config.agents.defaults.max_tool_iterations,
-        context_window_tokens=config.agents.defaults.context_window_tokens,
+        active_window_tokens=config.agents.defaults.active_window_tokens,
         web_search_config=config.tools.web.search,
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,

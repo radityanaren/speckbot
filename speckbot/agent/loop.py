@@ -59,7 +59,7 @@ class AgentLoop:
         workspace: Path,
         model: str | None = None,
         max_iterations: int = 40,
-        context_window_tokens: int = 65_536,
+        active_window_tokens: int = 65_536,
         web_search_config: WebSearchConfig | None = None,
         web_proxy: str | None = None,
         exec_config: ExecToolConfig | None = None,
@@ -80,7 +80,7 @@ class AgentLoop:
         self.workspace = workspace
         self.model = model or provider.get_default_model()
         self.max_iterations = max_iterations
-        self.context_window_tokens = context_window_tokens
+        self.active_window_tokens = active_window_tokens
         self.web_search_config = web_search_config or WebSearchConfig()
         self.web_proxy = web_proxy
         self.exec_config = exec_config or ExecToolConfig()
@@ -145,7 +145,7 @@ class AgentLoop:
             provider=provider,
             model=self.model,
             sessions=self.sessions,
-            context_window_tokens=context_window_tokens,
+            active_window_tokens=active_window_tokens,
             build_messages=self.context.build_messages,
             get_tool_definitions=self.tools.get_definitions,
         )
