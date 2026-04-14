@@ -60,6 +60,7 @@ class AgentLoop:
         model: str | None = None,
         max_iterations: int = 40,
         active_window_tokens: int = 65_536,
+        context_headroom: int = 20,
         web_search_config: WebSearchConfig | None = None,
         web_proxy: str | None = None,
         exec_config: ExecToolConfig | None = None,
@@ -81,6 +82,7 @@ class AgentLoop:
         self.model = model or provider.get_default_model()
         self.max_iterations = max_iterations
         self.active_window_tokens = active_window_tokens
+        self.context_headroom = context_headroom
         self.web_search_config = web_search_config or WebSearchConfig()
         self.web_proxy = web_proxy
         self.exec_config = exec_config or ExecToolConfig()
@@ -146,6 +148,7 @@ class AgentLoop:
             model=self.model,
             sessions=self.sessions,
             active_window_tokens=active_window_tokens,
+            context_headroom=context_headroom,
             build_messages=self.context.build_messages,
             get_tool_definitions=self.tools.get_definitions,
         )
@@ -851,7 +854,11 @@ class MessageHandler:
         session = self._agent.sessions.get_or_create(key)
 
         # Run memory consolidation before processing
-        await self._agent.memory_consolidator.maybe_archive_by_tokens(session)
+        # Safety Layer 2: Don't let archiving errors crash the request
+        try:
+            await self._agent.memory_consolidator.maybe_archive_by_tokens(session)
+        except Exception:
+            logger.exception("Memory consolidation failed, continuing anyway")
 
         # Set tool context
         self._agent._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"))

@@ -491,6 +491,7 @@ class MemoryConsolidator:
         model: str,
         sessions: SessionManager,
         active_window_tokens: int,
+        context_headroom: int = 20,
         build_messages: Callable[..., list[dict[str, Any]]],
         get_tool_definitions: Callable[[], list[dict[str, Any]]],
     ):
@@ -499,6 +500,7 @@ class MemoryConsolidator:
         self.model = model
         self.sessions = sessions
         self.active_window_tokens = active_window_tokens
+        self.context_headroom = context_headroom  # Headroom percentage for safety buffer
         self._build_messages = build_messages
         self._get_tool_definitions = get_tool_definitions
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
@@ -561,13 +563,18 @@ class MemoryConsolidator:
         """
         Archive old messages until prompt fits within active_window_tokens.
         Uses conveyor belt: messages are archived to JSONL, user reads on-demand.
+        
+        Safety: Uses context_headroom to calculate effective threshold, giving
+        a buffer for estimation errors and preventing overflow crashes.
         """
         if not session.messages or self.active_window_tokens <= 0:
             return
 
         lock = self.get_lock(session.key)
         async with lock:
-            threshold = self.active_window_tokens  # Archive when > this
+            # Apply headroom: effective threshold = (1 - headroom%) of active_window_tokens
+            # This gives a safety buffer for estimation errors
+            effective_threshold = int(self.active_window_tokens * (1 - self.context_headroom / 100))
             estimated, source = self.estimate_session_prompt_tokens(session)
             if estimated <= 0:
                 return
@@ -575,31 +582,34 @@ class MemoryConsolidator:
             # Check if initial context (system + tools + bootstrap) already exceeds threshold
             if session.key not in self._checked_initial_overflow:
                 self._checked_initial_overflow.add(session.key)
-                if estimated > threshold:
-                    raise ValueError(
-                        f"Initial context ({estimated} tokens) exceeds active_window_tokens "
-                        f"({threshold}). Your system prompt, tools, and bootstrap files are "
-                        f"too large for this window. Increase active_window_tokens to at "
-                        f"least {estimated + 1000} tokens."
+                if estimated > effective_threshold:
+                    logger.warning(
+                        "Conveyor belt: Initial context ({} tokens) exceeds effective threshold "
+                        "({} tokens, {}% headroom). Consider increasing active_window_tokens or "
+                        "reducing context_headroom. Processing will continue with degraded context.",
+                        estimated,
+                        effective_threshold,
+                        self.context_headroom,
                     )
 
-            # If still under threshold, no archiving needed
-            if estimated < threshold:
+            # If still under effective threshold, no archiving needed
+            if estimated < effective_threshold:
                 logger.debug(
-                    "Conveyor belt idle {}: {}/{}",
+                    "Conveyor belt idle {}: {}/{} ({}% headroom)",
                     session.key,
                     estimated,
-                    threshold,
+                    effective_threshold,
+                    self.context_headroom,
                 )
                 return
 
-            # Archive messages until under threshold
+            # Archive messages until under effective threshold
             for round_num in range(self._max_rounds):
-                if estimated <= threshold:
+                if estimated <= effective_threshold:
                     return
 
                 # Find boundary at user turn
-                boundary = self.pick_consolidation_boundary(session, max(1, estimated - threshold))
+                boundary = self.pick_consolidation_boundary(session, max(1, estimated - effective_threshold))
                 if boundary is None:
                     logger.debug(
                         "Conveyor belt: no safe boundary for {} (round {})",
@@ -619,7 +629,7 @@ class MemoryConsolidator:
                     session.key,
                     len(chunk),
                     estimated,
-                    threshold,
+                    effective_threshold,
                 )
 
                 # Archive to JSONL (no LLM)

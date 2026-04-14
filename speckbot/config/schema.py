@@ -31,6 +31,7 @@ class AgentDefaults(Base):
     provider: str = "provider_a"  # Must reference a provider name from providers list
     max_output_tokens: int = DEFAULT_MAX_TOKENS_AGENT
     active_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS
+    context_headroom: int = 20  # Headroom percentage for conveyor belt safety buffer
     temperature: float = DEFAULT_AGENT_TEMPERATURE
     max_tool_iterations: int = DEFAULT_MAX_TOOL_ITERATIONS
     reasoning_effort: str | None = None
