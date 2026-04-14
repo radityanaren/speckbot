@@ -18,11 +18,7 @@ class Session:
     """
     A conversation session.
 
-    Stores messages in JSONL format for easy reading and persistence.
-
-    Important: Messages are append-only for LLM cache efficiency.
-    The consolidation process writes summaries to MEMORY.md/HISTORY.md
-    but does NOT modify the messages list or get_history() output.
+    Stores messages in memory and archives overflow to JSONL.
     """
 
     key: str  # channel:chat_id
@@ -30,16 +26,11 @@ class Session:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
-    last_consolidated: int = 0  # Number of messages already consolidated to files
+    last_archived: int = 0  # Number of messages already archived
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
-        msg = {
-            "role": role,
-            "content": content,
-            "timestamp": datetime.now().isoformat(),
-            **kwargs
-        }
+        msg = {"role": role, "content": content, "timestamp": datetime.now().isoformat(), **kwargs}
         self.messages.append(msg)
         self.updated_at = datetime.now()
 
@@ -59,7 +50,7 @@ class Session:
                 if tid and str(tid) not in declared:
                     start = i + 1
                     declared.clear()
-                    for prev in messages[start:i + 1]:
+                    for prev in messages[start : i + 1]:
                         if prev.get("role") == "assistant":
                             for tc in prev.get("tool_calls") or []:
                                 if isinstance(tc, dict) and tc.get("id"):
@@ -67,9 +58,9 @@ class Session:
         return start
 
     def get_history(self, max_messages: int = 500) -> list[dict[str, Any]]:
-        """Return unconsolidated messages for LLM input, aligned to a legal tool-call boundary."""
-        unconsolidated = self.messages[self.last_consolidated:]
-        sliced = unconsolidated[-max_messages:]
+        """Return unarchived messages for LLM input, aligned to a legal tool-call boundary."""
+        unarchived = self.messages[self.last_archived :]
+        sliced = unarchived[-max_messages:]
 
         # Drop leading non-user messages to avoid starting mid-turn when possible.
         for i, message in enumerate(sliced):
@@ -95,8 +86,44 @@ class Session:
     def clear(self) -> None:
         """Clear all messages and reset session to initial state."""
         self.messages = []
-        self.last_consolidated = 0
+        self.last_archived = 0
         self.updated_at = datetime.now()
+
+    @staticmethod
+    def read_archive(
+        archive_dir: Path, session_key: str, offset: int = 0, limit: int = 15
+    ) -> list[dict[str, Any]]:
+        """
+        Read archived messages from JSONL file.
+
+        Args:
+            archive_dir: Directory containing archive files
+            session_key: Session key to read
+            offset: Number of entries to skip (pagination)
+            limit: Maximum entries to return (default 15)
+
+        Returns:
+            List of archived messages (max 15)
+        """
+        archive_file = archive_dir / f"{safe_filename(session_key)}.jsonl"
+
+        if not archive_file.exists():
+            return []
+
+        messages = []
+        with open(archive_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        messages.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+
+        # Apply pagination
+        start = offset
+        end = offset + limit
+        return messages[start:end]
 
 
 class SessionManager:
@@ -104,11 +131,13 @@ class SessionManager:
     Manages conversation sessions.
 
     Sessions are stored as JSONL files in the sessions directory.
+    Archives are stored separately in the archive/ subdirectory.
     """
 
     def __init__(self, workspace: Path):
         self.workspace = workspace
         self.sessions_dir = ensure_dir(self.workspace / "sessions")
+        self.archive_dir = ensure_dir(self.workspace / "archive")
         self.legacy_sessions_dir = get_legacy_sessions_dir()
         self._cache: dict[str, Session] = {}
 
@@ -161,7 +190,7 @@ class SessionManager:
             messages = []
             metadata = {}
             created_at = None
-            last_consolidated = 0
+            last_archived = 0
 
             with open(path, encoding="utf-8") as f:
                 for line in f:
@@ -173,8 +202,12 @@ class SessionManager:
 
                     if data.get("_type") == "metadata":
                         metadata = data.get("metadata", {})
-                        created_at = datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None
-                        last_consolidated = data.get("last_consolidated", 0)
+                        created_at = (
+                            datetime.fromisoformat(data["created_at"])
+                            if data.get("created_at")
+                            else None
+                        )
+                        last_archived = data.get("last_archived", 0)
                     else:
                         messages.append(data)
 
@@ -183,7 +216,7 @@ class SessionManager:
                 messages=messages,
                 created_at=created_at or datetime.now(),
                 metadata=metadata,
-                last_consolidated=last_consolidated
+                last_archived=last_archived,
             )
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)
@@ -200,13 +233,56 @@ class SessionManager:
                 "created_at": session.created_at.isoformat(),
                 "updated_at": session.updated_at.isoformat(),
                 "metadata": session.metadata,
-                "last_consolidated": session.last_consolidated
+                "last_archived": session.last_archived,
             }
             f.write(json.dumps(metadata_line, ensure_ascii=False) + "\n")
             for msg in session.messages:
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
         self._cache[session.key] = session
+
+    def archive_session(self, session: Session) -> list[dict[str, Any]]:
+        """
+        Archive old messages to JSONL file for a session.
+
+        Args:
+            session: Session to archive messages from
+
+        Returns:
+            The archived messages
+        """
+        unarchived = session.messages[session.last_archived :]
+        if not unarchived:
+            return []
+
+        # Create archive file path
+        archive_file = self.archive_dir / f"{safe_filename(session.key)}.jsonl"
+
+        # Append to archive file
+        with open(archive_file, "a", encoding="utf-8") as f:
+            for msg in unarchived:
+                f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
+        # Update marker
+        session.last_archived = len(session.messages)
+
+        return unarchived
+
+    def read_archive(
+        self, session_key: str, offset: int = 0, limit: int = 15
+    ) -> list[dict[str, Any]]:
+        """
+        Read archived messages from JSONL file.
+
+        Args:
+            session_key: Session key to read
+            offset: Number of entries to skip (pagination)
+            limit: Maximum entries to return (default 15)
+
+        Returns:
+            List of archived messages (max 15)
+        """
+        return Session.read_archive(self.archive_dir, session_key, offset, limit)
 
     def invalidate(self, key: str) -> None:
         """Remove a session from the in-memory cache."""
@@ -230,12 +306,14 @@ class SessionManager:
                         data = json.loads(first_line)
                         if data.get("_type") == "metadata":
                             key = data.get("key") or path.stem.replace("_", ":", 1)
-                            sessions.append({
-                                "key": key,
-                                "created_at": data.get("created_at"),
-                                "updated_at": data.get("updated_at"),
-                                "path": str(path)
-                            })
+                            sessions.append(
+                                {
+                                    "key": key,
+                                    "created_at": data.get("created_at"),
+                                    "updated_at": data.get("updated_at"),
+                                    "path": str(path),
+                                }
+                            )
             except Exception:
                 continue
 

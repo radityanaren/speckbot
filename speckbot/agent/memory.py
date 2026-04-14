@@ -553,65 +553,67 @@ class MemoryConsolidator:
         )
 
     async def archive_messages(self, messages: list[dict[str, object]]) -> bool:
-        """Archive messages with guaranteed persistence (retries until raw-dump fallback)."""
-        if not messages:
-            return True
-        for _ in range(self.store._max_failures):
-            if await self.consolidate_messages(messages):
-                return True
+        """Archive messages to JSONL (no LLM needed)."""
+        # Messages are archived via SessionManager.archive_session
+        # This is a no-op placeholder since archiving happens in maybe_archive_by_tokens
         return True
 
-    async def maybe_consolidate_by_tokens(self, session: Session) -> None:
-        """Loop: archive old messages until prompt fits within half the context window."""
+    async def maybe_archive_by_tokens(self, session: Session) -> None:
+        """
+        Archive old messages until prompt fits within target tokens.
+        Uses conveyor belt: messages are archived to JSONL, user reads on-demand.
+        """
         if not session.messages or self.context_window_tokens <= 0:
             return
 
         lock = self.get_lock(session.key)
         async with lock:
-            target = self.context_window_tokens // 2
+            target = self.context_window_tokens // 2  # Archive when >50% used
             estimated, source = self.estimate_session_prompt_tokens(session)
             if estimated <= 0:
                 return
-            if estimated < self.context_window_tokens:
+
+            # If still under threshold, no archiving needed
+            if estimated < target:
                 logger.debug(
-                    "Token consolidation idle {}: {}/{} via {}",
+                    "Conveyor belt idle {}: {}/{}",
                     session.key,
                     estimated,
-                    self.context_window_tokens,
-                    source,
+                    target,
                 )
                 return
 
+            # Archive messages until under threshold
             for round_num in range(self._max_rounds):
                 if estimated <= target:
                     return
 
+                # Find boundary at user turn
                 boundary = self.pick_consolidation_boundary(session, max(1, estimated - target))
                 if boundary is None:
                     logger.debug(
-                        "Token consolidation: no safe boundary for {} (round {})",
+                        "Conveyor belt: no safe boundary for {} (round {})",
                         session.key,
                         round_num,
                     )
                     return
 
                 end_idx = boundary[0]
-                chunk = session.messages[session.last_consolidated : end_idx]
+                chunk = session.messages[session.last_archived : end_idx]
                 if not chunk:
                     return
 
                 logger.info(
-                    "Token consolidation round {} for {}: {}/{} via {}, chunk={} msgs",
+                    "Conveyor belt round {} for {}: archiving {} msgs, {}/{}",
                     round_num,
                     session.key,
-                    estimated,
-                    self.context_window_tokens,
-                    source,
                     len(chunk),
+                    estimated,
+                    target,
                 )
-                if not await self.consolidate_messages(chunk):
-                    return
-                session.last_consolidated = end_idx
+
+                # Archive to JSONL (no LLM)
+                self.sessions.archive_session(session)
                 self.sessions.save(session)
 
                 estimated, source = self.estimate_session_prompt_tokens(session)

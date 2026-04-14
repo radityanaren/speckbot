@@ -760,7 +760,7 @@ class MessageHandler:
         self._save_turn(session, all_msgs, 1 + len(history))
         self._agent.sessions.save(session)
         self._agent._schedule_background(
-            self._agent.memory_consolidator.maybe_consolidate_by_tokens(session)
+            self._agent.memory_consolidator.maybe_archive_by_tokens(session)
         )
 
         return OutboundMessage(
@@ -851,7 +851,7 @@ class MessageHandler:
         session = self._agent.sessions.get_or_create(key)
 
         # Run memory consolidation before processing
-        await self._agent.memory_consolidator.maybe_consolidate_by_tokens(session)
+        await self._agent.memory_consolidator.maybe_archive_by_tokens(session)
 
         # Set tool context
         self._agent._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"))
@@ -898,7 +898,7 @@ class MessageHandler:
         self._save_turn(session, all_msgs, 1 + len(history))
         self._agent.sessions.save(session)
         self._agent._schedule_background(
-            self._agent.memory_consolidator.maybe_consolidate_by_tokens(session)
+            self._agent.memory_consolidator.maybe_archive_by_tokens(session)
         )
 
         # Check if message was sent via tool (don't duplicate)
