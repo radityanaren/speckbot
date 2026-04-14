@@ -254,7 +254,6 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
     # Create 3-layer memory directories
     (workspace / "knowledges").mkdir(exist_ok=True)
     (workspace / "projects").mkdir(exist_ok=True)
-    _write(None, workspace / "HISTORY.md")
     (workspace / "skills").mkdir(exist_ok=True)
     (workspace / "sessions").mkdir(exist_ok=True)
 

@@ -14,7 +14,6 @@ class MemoryMap:
     def __init__(self):
         self.knowledges: dict[str, list[Path]] = {}
         self.projects: dict[str, list[Path]] = {}
-        self.history_entries: list[str] = []
         self.last_updated: dict[str, datetime] = {}
 
 
@@ -45,7 +44,6 @@ class DreamEngine:
         # Directories
         self.knowledges_dir = workspace / "knowledges"
         self.projects_dir = workspace / "projects"
-        self.history_file = workspace / "HISTORY.md"
         self.memory_file = workspace / "MEMORY.md"
         self.sessions_dir = workspace / "sessions"
 
@@ -94,11 +92,6 @@ class DreamEngine:
                     if md_files:
                         mtime = max(f.stat().st_mtime for f in md_files)
                         memory.last_updated[topic_dir.name] = datetime.fromtimestamp(mtime)
-
-        # Scan history
-        if self.history_file.exists():
-            content = self.history_file.read_text(encoding="utf-8")
-            memory.history_entries = [e.strip() for e in content.split("\n\n") if e.strip()]
 
         return memory
 
@@ -161,54 +154,12 @@ class DreamEngine:
     def consolidate(self, memory: MemoryMap, insights: list[SessionInsight]) -> dict[str, Any]:
         """Phase 3: Dedupe, convert dates, trim."""
         result = {
-            "deduplicated": 0,
-            "date_fixed": 0,
-            "trimmed": 0,
             "content_similarities_merged": 0,
         }
-
-        if self.deduplicate and memory.history_entries:
-            seen = set()
-            deduplicated = []
-            for entry in memory.history_entries:
-                key = entry[:100].strip()
-                if key not in seen:
-                    seen.add(key)
-                    deduplicated.append(entry)
-                else:
-                    result["deduplicated"] += 1
-            memory.history_entries = deduplicated
-
-        if self.convert_dates:
-            relative_patterns = {
-                "last week": (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d"),
-                "yesterday": (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"),
-                "last month": (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
-                "today": datetime.now().strftime("%Y-%m-%d"),
-            }
-            for i, entry in enumerate(memory.history_entries):
-                entry_lower = entry.lower()
-                for pattern, date_str in relative_patterns.items():
-                    if pattern in entry_lower:
-                        memory.history_entries[i] = entry.replace(pattern, date_str, 1)
-                        result["date_fixed"] += 1
-                        break
-
-        if len(memory.history_entries) > self.max_memory_lines:
-            result["trimmed"] = len(memory.history_entries) - self.max_memory_lines
-            memory.history_entries = memory.history_entries[-self.max_memory_lines :]
-
         return result
 
     def stabilize(self, memory: MemoryMap) -> None:
         """Phase 4: Write cleaned files back."""
-        if memory.history_entries:
-            self.history_file.write_text(
-                "\n\n".join(memory.history_entries) + "\n", encoding="utf-8"
-            )
-        elif self.history_file.exists():
-            self.history_file.write_text("", encoding="utf-8")
-
         self._write_memory_index(memory)
 
     def _write_memory_index(self, memory: MemoryMap) -> None:

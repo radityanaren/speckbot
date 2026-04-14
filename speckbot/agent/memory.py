@@ -160,7 +160,6 @@ class MemoryStore:
     Three-layer memory system:
     - knowledges/ - Factual/technical knowledge (individual .md files per topic)
     - projects/ - Project-specific context (individual .md files per project)
-    - HISTORY.md - Date-indexed grep-searchable log of conversations
     """
 
     # Use constants for thresholds
@@ -170,7 +169,6 @@ class MemoryStore:
         self.workspace = workspace
         self.knowledges_dir = ensure_dir(workspace / "knowledges")
         self.projects_dir = ensure_dir(workspace / "projects")
-        self.history_file = workspace / "HISTORY.md"
         self._consecutive_failures = 0
 
     # === Knowledge Management ===
@@ -510,8 +508,8 @@ class MemoryConsolidator:
         return self._locks.setdefault(session_key, asyncio.Lock())
 
     async def consolidate_messages(self, messages: list[dict[str, object]]) -> bool:
-        """Archive a selected message chunk into persistent memory."""
-        return await self.store.consolidate(messages, self.provider, self.model)
+        """Archive messages (no LLM needed - conveyor belt uses raw JSONL)."""
+        return True
 
     def pick_consolidation_boundary(
         self,
@@ -519,7 +517,7 @@ class MemoryConsolidator:
         tokens_to_remove: int,
     ) -> tuple[int, int] | None:
         """Pick a user-turn boundary that removes enough old prompt tokens."""
-        start = session.last_consolidated
+        start = session.last_archived
         if start >= len(session.messages) or tokens_to_remove <= 0:
             return None
 
