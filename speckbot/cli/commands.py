@@ -569,7 +569,6 @@ def gateway(
             "prompt": config.services.monologue_prompt,
             "visible": config.services.monologue_visible,
         },
-        context_level=config.agents.defaults.context_level,
     )
 
     # Set cron callback (needs agent)

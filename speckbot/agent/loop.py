@@ -32,7 +32,7 @@ from speckbot.services.cron import CronService
 from speckbot.services.monologue import MonologueSystem
 from speckbot.services.timer import UnifiedTimer
 from speckbot.session.manager import Session, SessionManager
-from speckbot.utils.constants import TOOL_RESULT_MAX_CHARS, CONTEXT_PRESETS
+from speckbot.utils.constants import TOOL_RESULT_MAX_CHARS
 
 if TYPE_CHECKING:
     from speckbot.config.schema import ChannelsConfig, ExecToolConfig, WebSearchConfig
@@ -70,7 +70,6 @@ class AgentLoop:
         channels_config: ChannelsConfig | None = None,
         hooks_config: dict[str, Any] | None = None,
         monologue_config: dict | None = None,
-        context_level: str = "medium",
         unified_timer=None,  # For resetting monologue counter on user messages
     ):
         from speckbot.config.schema import ExecToolConfig, WebSearchConfig
@@ -88,9 +87,7 @@ class AgentLoop:
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 
-        # Context preset controls history/journal depth
-        self.context_level = context_level
-        self.context_preset = CONTEXT_PRESETS.get(context_level, CONTEXT_PRESETS["medium"])
+        # No more presets - history/journal handled by conveyor belt
 
         # Create shared security service first
         from speckbot.agent.security import SecurityService
@@ -740,8 +737,7 @@ class MessageHandler:
 
         key = f"{channel}:{chat_id}"
         session = self._agent.sessions.get_or_create(key)
-        history_limit = self._agent.context_preset["history"]
-        history = session.get_history(max_messages=history_limit)
+        history = session.get_history(max_messages=10)  # Default: last 10 messages
 
         # Subagent results should be assistant role, other system messages use user role
         current_role = "assistant" if msg.sender_id == "subagent" else "user"
@@ -754,8 +750,7 @@ class MessageHandler:
             session_key=msg.session_key,
             user_id=msg.user_id,
             username=msg.username,
-            journal_entries=self._agent.context_preset["journal"],
-            history_entries=self._agent.context_preset["history_entries"],
+            journal_entries=10,  # Load last 10 journal entries
         )
 
         final_content, _, all_msgs = await self._agent._run_agent_loop(
@@ -864,9 +859,8 @@ class MessageHandler:
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
-        # Build context with history
-        history_limit = self._agent.context_preset["history"]
-        history = session.get_history(max_messages=history_limit)
+        # Build context with history (default 10 messages)
+        history = session.get_history(max_messages=10)
         initial_messages = self._agent.context.build_messages(
             history=history,
             current_message=msg.content,
@@ -876,8 +870,7 @@ class MessageHandler:
             session_key=msg.session_key,
             user_id=msg.user_id,
             username=msg.username,
-            journal_entries=self._agent.context_preset["journal"],
-            history_entries=self._agent.context_preset["history_entries"],
+            journal_entries=10,  # Load last 10 journal entries
         )
 
         # Progress callback

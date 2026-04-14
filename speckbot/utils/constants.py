@@ -62,15 +62,6 @@ DEFAULT_CONTEXT_WINDOW_TOKENS = 65_536
 DEFAULT_AGENT_TEMPERATURE = 0.1
 DEFAULT_MAX_TOOL_ITERATIONS = 40
 
-# Context presets: (history_messages, journal_entries, history_entries)
-# All "entries" based counting for consistency
-# history_entries: 0 = skip file, positive = last N entries, None = all
-CONTEXT_PRESETS = {
-    "small": {"history": 5, "journal": 5, "history_entries": 0},  # Skip HISTORY.md
-    "medium": {"history": 20, "journal": 20, "history_entries": 100},  # Half of default 200
-    "large": {"history": 0, "journal": 50, "history_entries": None},  # All entries
-}
-
 # =============================================================================
 # Defaults - Gateway
 # =============================================================================

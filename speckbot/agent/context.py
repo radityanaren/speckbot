@@ -19,15 +19,12 @@ from speckbot.utils.helpers import (
 class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
 
-    BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "HISTORY.md", "MEMORY.md", "JOURNAL.md"]
+    BOOTSTRAP_FILES = ["AGENTS.md", "MEMORY.md", "JOURNAL.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
 
     # Hardcoded file descriptions - added BEFORE reading each file
     _BOOTSTRAP_DESCRIPTIONS = {
         "AGENTS.md": "File: Your instructions and behavioral guidelines.",
-        "SOUL.md": "File: Your personality and communication style.",
-        "USER.md": "File: User profile and preferences.",
-        "HISTORY.md": "File: Past conversations (summarized when context full).",
         "MEMORY.md": "File: Index of saved knowledges (knowledges/) and projects (projects/). Use save_knowledge and save_project tools to save.",
         "JOURNAL.md": "File: Your private inner monologue journal entries.",
     }
@@ -47,15 +44,12 @@ class ContextBuilder:
     def build_system_prompt(
         self,
         skill_names: list[str] | None = None,
-        journal_entries: int = 20,
-        history_entries: int | None = 100,
+        journal_entries: int = 10,
     ) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
         parts = [self._get_identity()]
 
-        bootstrap = self._load_bootstrap_files(
-            journal_entries=journal_entries, history_entries=history_entries
-        )
+        bootstrap = self._load_bootstrap_files(journal_entries=journal_entries)
         if bootstrap:
             parts.append(bootstrap)
 
@@ -149,10 +143,8 @@ Reply directly. Use 'message' tool only for chat."""
             lines.append(user_info)
         return ContextBuilder._RUNTIME_CONTEXT_TAG + "\n" + "\n".join(lines)
 
-    def _load_bootstrap_files(
-        self, journal_entries: int = 20, history_entries: int | None = 100
-    ) -> str:
-        """Load all bootstrap files from workspace."""
+    def _load_bootstrap_files(self, journal_entries: int = 10) -> str:
+        """Load bootstrap files from workspace with entry limits."""
         parts = []
 
         for filename in self.BOOTSTRAP_FILES:
@@ -163,28 +155,13 @@ Reply directly. Use 'message' tool only for chat."""
             content = file_path.read_text(encoding="utf-8")
             description = self._BOOTSTRAP_DESCRIPTIONS.get(filename, f"File: {filename}")
 
-            # For JOURNAL.md, only load last N entries based on context preset
-            if filename == "JOURNAL.md" and content:
+            # For JOURNAL.md, only load last N entries
+            if filename == "JOURNAL.md" and content and journal_entries > 0:
                 content = self._limit_journal_entries(content, max_entries=journal_entries)
-
-            # For HISTORY.md, limit entries based on context preset
-            if filename == "HISTORY.md" and content:
-                if history_entries == 0:
-                    # Skip HISTORY.md entirely in small mode
-                    continue
-                elif history_entries and history_entries > 0:
-                    content = self._limit_history_entries(content, max_entries=history_entries)
 
             parts.append(f"## {filename}\n{description}\n\n{content}")
 
         return "\n\n".join(parts) if parts else ""
-
-    def _limit_history_entries(self, content: str, max_entries: int = 100) -> str:
-        """Limit HISTORY.md to last N entries (separated by double newlines)."""
-        # HISTORY.md entries are separated by "\n\n"
-        entries = content.split("\n\n")
-        limited = entries[-max_entries:] if entries else []
-        return "\n\n".join(limited)
 
     def _limit_journal_entries(self, content: str, max_entries: int = 20) -> str:
         """Limit journal to last N entries (each line starting with '- [' is an entry)."""
@@ -224,8 +201,7 @@ Reply directly. Use 'message' tool only for chat."""
         skip_security: bool = False,
         user_id: str | None = None,
         username: str | None = None,
-        journal_entries: int = 20,
-        history_entries: int | None = 100,
+        journal_entries: int = 10,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
 
@@ -256,9 +232,7 @@ Reply directly. Use 'message' tool only for chat."""
         return [
             {
                 "role": "system",
-                "content": self.build_system_prompt(
-                    skill_names, journal_entries=journal_entries, history_entries=history_entries
-                ),
+                "content": self.build_system_prompt(skill_names, journal_entries=journal_entries),
             },
             *history,
             {"role": current_role, "content": merged},

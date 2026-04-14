@@ -139,5 +139,4 @@ After:  ~200 tokens (runtime, workspace, platform only)
 
 - Each phase is modular - can be done independently
 - Conveyor belt Phase 3 is the biggest change - consider doing last
-- Keep backwards compatibility where possible
 - Document changes for users
