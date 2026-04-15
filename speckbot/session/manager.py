@@ -27,12 +27,28 @@ class Session:
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
     last_archived: int = 0  # Number of messages already archived
+    summary_so_far: str = ""  # Accumulated context summary for conveyor belt
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
         msg = {"role": role, "content": content, "timestamp": datetime.now().isoformat(), **kwargs}
         self.messages.append(msg)
         self.updated_at = datetime.now()
+
+    def append_summary(self, new_summary: str) -> None:
+        """Append new summary segment to accumulated summary."""
+        if new_summary:
+            if self.summary_so_far:
+                self.summary_so_far += "\n" + new_summary
+            else:
+                self.summary_so_far = new_summary
+        self.updated_at = datetime.now()
+
+    def get_context_summary(self) -> str:
+        """Get the formatted context summary for system prompt."""
+        if not self.summary_so_far:
+            return ""
+        return f"<context-summary>\n{self.summary_so_far}\n</context-summary>"
 
     @staticmethod
     def _find_legal_start(messages: list[dict[str, Any]]) -> int:
@@ -217,6 +233,7 @@ class SessionManager:
                 created_at=created_at or datetime.now(),
                 metadata=metadata,
                 last_archived=last_archived,
+                summary_so_far=data.get("summary_so_far", ""),
             )
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)
@@ -234,6 +251,7 @@ class SessionManager:
                 "updated_at": session.updated_at.isoformat(),
                 "metadata": session.metadata,
                 "last_archived": session.last_archived,
+                "summary_so_far": session.summary_so_far,
             }
             f.write(json.dumps(metadata_line, ensure_ascii=False) + "\n")
             for msg in session.messages:
@@ -241,7 +259,7 @@ class SessionManager:
 
         self._cache[session.key] = session
 
-    def archive_session(self, session: Session) -> list[dict[str, Any]]:
+    def archive_session(self, session: Session) -> tuple[list[dict[str, Any]], str]:
         """
         Archive old messages to JSONL file for a session.
 
@@ -249,11 +267,13 @@ class SessionManager:
             session: Session to archive messages from
 
         Returns:
-            The archived messages
+            Tuple of (archived messages, archive note for summary)
         """
         unarchived = session.messages[session.last_archived :]
         if not unarchived:
-            return []
+            return [], ""
+
+        msg_count = len(unarchived)
 
         # Create archive file path
         archive_file = self.archive_dir / f"{safe_filename(session.key)}.jsonl"
@@ -266,7 +286,9 @@ class SessionManager:
         # Update marker
         session.last_archived = len(session.messages)
 
-        return unarchived
+        # Create archive note for summary
+        archive_note = f"[--:--] [{msg_count} messages archived - see archive for more]"
+        return unarchived, archive_note
 
     def read_archive(
         self, session_key: str, offset: int = 0, limit: int = 15

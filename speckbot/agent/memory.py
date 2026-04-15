@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import weakref
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -22,6 +24,143 @@ from speckbot.utils.constants import MAX_CONSOLIDATION_FAILURES, MAX_CONSOLIDATI
 if TYPE_CHECKING:
     from speckbot.providers.base import LLMProvider
     from speckbot.session.manager import Session, SessionManager
+
+
+# =============================================================================
+# Context Summary for Conveyor Belt
+# =============================================================================
+
+
+@dataclass
+class SummaryConfig:
+    """Configuration for message summarization."""
+
+    enabled: bool = True
+    user_max_chars: int = 100
+    tool_max_chars: int = 80
+    result_max_chars: int = 100
+    assistant_max_chars: int = 150
+
+
+class MessageSummaryExtractor:
+    """Extracts compact summaries from messages for context preservation."""
+
+    def __init__(self, config: SummaryConfig | None = None):
+        self.config = config or SummaryConfig()
+
+    def extract(self, messages: list[dict[str, Any]]) -> str:
+        """Extract summary from a list of messages.
+
+        Args:
+            messages: List of message dicts to summarize
+
+        Returns:
+            Formatted summary string for context
+        """
+        if not messages or not self.config.enabled:
+            return ""
+
+        lines: list[str] = []
+
+        for msg in messages:
+            role = msg.get("role", "")
+            timestamp = self._extract_timestamp(msg)
+            summary_line = self._summarize_message(msg, role, timestamp)
+            if summary_line:
+                lines.append(summary_line)
+
+        return "\n".join(lines)
+
+    def _extract_timestamp(self, msg: dict) -> str:
+        """Extract HH:MM from message timestamp."""
+        ts = msg.get("timestamp", "")
+        if not ts:
+            return ""
+        try:
+            # Handle ISO format: 2026-04-14T19:45:35.316
+            if "T" in ts:
+                time_part = ts.split("T")[1].split(".")[0]
+                return time_part[:5]  # HH:MM
+            return ts[:5]
+        except Exception:
+            return ""
+
+    def _summarize_message(self, msg: dict, role: str, timestamp: str) -> str:
+        """Summarize a single message based on role."""
+        ts = f"[{timestamp}]" if timestamp else "[--:--]"
+
+        if role == "user":
+            return self._summarize_user(msg, ts)
+        elif role == "assistant":
+            return self._summarize_assistant(msg, ts)
+        elif role == "tool":
+            return self._summarize_tool_result(msg, ts)
+        return ""
+
+    def _summarize_user(self, msg: dict, ts: str) -> str:
+        """Summarize user message."""
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            # Multimodal - extract text
+            text_parts = []
+            for c in content:
+                if isinstance(c, dict) and c.get("type") == "text":
+                    text_parts.append(c.get("text", ""))
+            content = " ".join(text_parts)
+
+        if not content:
+            return ""
+
+        # Strip runtime context tag if present
+        content = re.sub(r"\[Runtime Context.*?\]\s*", "", content, flags=re.DOTALL).strip()
+
+        # Truncate to limit
+        truncated, was_truncated = self._truncate(content, self.config.user_max_chars)
+        truncation_note = " [TRUNCATED]" if was_truncated else ""
+
+        return f'{ts} USER: "{truncated}..."{truncation_note}'
+
+    def _summarize_assistant(self, msg: dict, ts: str) -> str:
+        """Summarize assistant message."""
+        content = msg.get("content", "")
+
+        # Check for tool calls
+        tool_calls = msg.get("tool_calls", [])
+        if tool_calls:
+            tool_names = [tc.get("function", {}).get("name", "unknown") for tc in tool_calls]
+            return f"{ts} ASST: *calls tools: {', '.join(tool_names)}"
+
+        if not content:
+            return f"{ts} ASST: *(no content)"
+
+        # Truncate response
+        truncated, was_truncated = self._truncate(content, self.config.assistant_max_chars)
+        truncation_note = " [TRUNCATED]" if was_truncated else ""
+
+        return f'{ts} ASST: "{truncated}..."{truncation_note}'
+
+    def _summarize_tool_result(self, msg: dict, ts: str) -> str:
+        """Summarize tool result message."""
+        tool_name = msg.get("name", "unknown")
+        content = msg.get("content", "")
+
+        # Format tool call info
+        result_line = f"{ts} TOOL {tool_name} →"
+
+        if not content:
+            return f"{result_line} *(no result)*"
+
+        # Truncate result
+        truncated, was_truncated = self._truncate(content, self.config.result_max_chars)
+        truncation_note = " [TRUNCATED]" if was_truncated else ""
+
+        return f'{result_line} "{truncated}..."{truncation_note}'
+
+    def _truncate(self, text: str, limit: int) -> tuple[str, bool]:
+        """Truncate text to limit, return (truncated, was_truncated)."""
+        if len(text) <= limit:
+            return text, False
+        return text[:limit], True
 
 
 # Tool for consolidation (internal LLM call) - just save_memory
@@ -494,6 +633,7 @@ class MemoryConsolidator:
         build_messages: Callable[..., list[dict[str, Any]]],
         get_tool_definitions: Callable[[], list[dict[str, Any]]],
         context_headroom: int = 20,
+        summary_config: SummaryConfig | None = None,
     ):
         self.store = MemoryStore(workspace)
         self.provider = provider
@@ -501,6 +641,8 @@ class MemoryConsolidator:
         self.sessions = sessions
         self.active_window_tokens = active_window_tokens
         self.context_headroom = context_headroom  # Headroom percentage for safety buffer
+        self.summary_config = summary_config or SummaryConfig()
+        self.summary_extractor = MessageSummaryExtractor(self.summary_config)
         self._build_messages = build_messages
         self._get_tool_definitions = get_tool_definitions
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
@@ -634,8 +776,18 @@ class MemoryConsolidator:
                     effective_threshold,
                 )
 
-                # Archive to JSONL (no LLM)
-                self.sessions.archive_session(session)
+                # Extract summary BEFORE archiving (to preserve context)
+                summary = self.summary_extractor.extract(chunk)
+
+                # Archive to JSONL and get archive note
+                archived, archive_note = self.sessions.archive_session(session)
+
+                # Append summary to session's accumulated summary
+                if summary:
+                    session.append_summary(summary)
+                if archive_note:
+                    session.append_summary(archive_note)
+
                 self.sessions.save(session)
 
                 estimated, source = self.estimate_session_prompt_tokens(session)

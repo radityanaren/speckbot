@@ -62,6 +62,7 @@ class AgentLoop:
         active_window_tokens: int = 65_536,
         context_headroom: int = 20,
         tool_result_max_chars: int = 10_000,
+        summary_config: dict | None = None,
         web_search_config: WebSearchConfig | None = None,
         web_proxy: str | None = None,
         exec_config: ExecToolConfig | None = None,
@@ -74,6 +75,7 @@ class AgentLoop:
         monologue_config: dict | None = None,
         unified_timer=None,  # For resetting monologue counter on user messages
     ):
+        from speckbot.agent.memory import SummaryConfig
         from speckbot.config.schema import ExecToolConfig, WebSearchConfig
 
         self.bus = bus
@@ -146,6 +148,18 @@ class AgentLoop:
         self._background_tasks: list[asyncio.Task] = []
         self._processing_lock = asyncio.Lock()
         self.tools = ToolRegistry(hooks_config, workspace=workspace, security=self.security)
+
+        # Create summary config for conveyor belt
+        if summary_config is None:
+            summary_config = {}
+        mc_summary_config = SummaryConfig(
+            enabled=summary_config.get("enabled", True),
+            user_max_chars=summary_config.get("user_max_chars", 100),
+            tool_max_chars=summary_config.get("tool_max_chars", 80),
+            result_max_chars=summary_config.get("result_max_chars", 100),
+            assistant_max_chars=summary_config.get("assistant_max_chars", 150),
+        )
+
         self.memory_consolidator = MemoryConsolidator(
             workspace=workspace,
             provider=provider,
@@ -155,6 +169,7 @@ class AgentLoop:
             build_messages=self.context.build_messages,
             get_tool_definitions=self.tools.get_definitions,
             context_headroom=context_headroom,
+            summary_config=mc_summary_config,
         )
         self._register_default_tools()
 
@@ -745,6 +760,8 @@ class MessageHandler:
         key = f"{channel}:{chat_id}"
         session = self._agent.sessions.get_or_create(key)
         history = session.get_history(max_messages=10)  # Default: last 10 messages
+        # Get context summary from conveyor belt
+        context_summary = session.get_context_summary()
 
         # Subagent results should be assistant role, other system messages use user role
         current_role = "assistant" if msg.sender_id == "subagent" else "user"
@@ -758,6 +775,7 @@ class MessageHandler:
             user_id=msg.user_id,
             username=msg.username,
             journal_entries=10,  # Load last 10 journal entries
+            context_summary=context_summary,
         )
 
         final_content, _, all_msgs = await self._agent._run_agent_loop(
@@ -872,6 +890,8 @@ class MessageHandler:
 
         # Build context with history (default 10 messages)
         history = session.get_history(max_messages=10)
+        # Get context summary from conveyor belt
+        context_summary = session.get_context_summary()
         initial_messages = self._agent.context.build_messages(
             history=history,
             current_message=msg.content,
@@ -882,6 +902,7 @@ class MessageHandler:
             user_id=msg.user_id,
             username=msg.username,
             journal_entries=10,  # Load last 10 journal entries
+            context_summary=context_summary,
         )
 
         # Progress callback

@@ -33,6 +33,12 @@ class AgentDefaults(Base):
     active_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS
     context_headroom: int = 20  # Headroom percentage for conveyor belt safety buffer
     tool_result_max_chars: int = 10_000  # Max characters for tool result truncation
+    # Summary config for context fidelity in conveyor belt
+    summary_enabled: bool = True
+    summary_user_max_chars: int = 100
+    summary_tool_max_chars: int = 80
+    summary_result_max_chars: int = 100
+    summary_assistant_max_chars: int = 150
     temperature: float = DEFAULT_AGENT_TEMPERATURE
     max_tool_iterations: int = DEFAULT_MAX_TOOL_ITERATIONS
     reasoning_effort: str | None = None

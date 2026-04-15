@@ -556,6 +556,13 @@ def gateway(
         active_window_tokens=config.agents.defaults.active_window_tokens,
         context_headroom=config.agents.defaults.context_headroom,
         tool_result_max_chars=config.agents.defaults.tool_result_max_chars,
+        summary_config={
+            "enabled": config.agents.defaults.summary_enabled,
+            "user_max_chars": config.agents.defaults.summary_user_max_chars,
+            "tool_max_chars": config.agents.defaults.summary_tool_max_chars,
+            "result_max_chars": config.agents.defaults.summary_result_max_chars,
+            "assistant_max_chars": config.agents.defaults.summary_assistant_max_chars,
+        },
         web_search_config=config.tools.web.search,
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,

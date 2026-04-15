@@ -50,9 +50,14 @@ class ContextBuilder:
         self,
         skill_names: list[str] | None = None,
         journal_entries: int = 10,
+        context_summary: str = "",
     ) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
         parts = [self._get_identity()]
+
+        # Add context summary if available (from conveyor belt)
+        if context_summary:
+            parts.append(context_summary)
 
         bootstrap = self._load_bootstrap_files(journal_entries=journal_entries)
         if bootstrap:
@@ -211,6 +216,7 @@ Reply directly. Use 'message' tool only for chat."""
         user_id: str | None = None,
         username: str | None = None,
         journal_entries: int = 10,
+        context_summary: str = "",
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
 
@@ -241,7 +247,9 @@ Reply directly. Use 'message' tool only for chat."""
         return [
             {
                 "role": "system",
-                "content": self.build_system_prompt(skill_names, journal_entries=journal_entries),
+                "content": self.build_system_prompt(
+                    skill_names, journal_entries=journal_entries, context_summary=context_summary
+                ),
             },
             *history,
             {"role": current_role, "content": merged},
