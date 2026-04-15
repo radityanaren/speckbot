@@ -776,6 +776,9 @@ class MemoryConsolidator:
                     effective_threshold,
                 )
 
+                # UPDATE the marker before archiving
+                session.last_archived = end_idx
+
                 # Extract summary BEFORE archiving (to preserve context)
                 summary = self.summary_extractor.extract(chunk)
 

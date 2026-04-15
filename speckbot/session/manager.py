@@ -19,6 +19,8 @@ class Session:
     A conversation session.
 
     Stores messages in memory and archives overflow to JSONL.
+    Conveyor belt uses recursive summarization - old messages are summarized
+    and progressively compressed to maintain context fidelity.
     """
 
     key: str  # channel:chat_id
@@ -27,7 +29,8 @@ class Session:
     updated_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
     last_archived: int = 0  # Number of messages already archived
-    summary_so_far: str = ""  # Accumulated context summary for conveyor belt
+    summary_lines: list[str] = field(default_factory=list)  # Summary as list of lines
+    _max_summary_lines: int = 20  # Max lines before recursive compression
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""
@@ -36,19 +39,85 @@ class Session:
         self.updated_at = datetime.now()
 
     def append_summary(self, new_summary: str) -> None:
-        """Append new summary segment to accumulated summary."""
-        if new_summary:
-            if self.summary_so_far:
-                self.summary_so_far += "\n" + new_summary
-            else:
-                self.summary_so_far = new_summary
+        """Append new summary lines to accumulated summary with recursive compression."""
+        if not new_summary:
+            return
+
+        # Add new lines
+        new_lines = new_summary.strip().split("\n")
+        self.summary_lines.extend(new_lines)
+
+        # Recursive compression: if too many lines, compress oldest into one
+        while len(self.summary_lines) > self._max_summary_lines:
+            self._compress_oldest_lines()
+
         self.updated_at = datetime.now()
+
+    def _compress_oldest_lines(self) -> None:
+        """Compress oldest 3 lines into one hybrid summary line."""
+        if len(self.summary_lines) < 3:
+            return
+
+        # Take oldest 3 lines
+        to_compress = self.summary_lines[:3]
+        compressed = self._hybrid_compress(to_compress)
+
+        # Replace oldest 3 with compressed single line
+        self.summary_lines = [compressed] + self.summary_lines[3:]
+
+    def _hybrid_compress(self, lines: list[str]) -> str:
+        """Hybrid compression: template + keywords, output ~100 chars."""
+        # Extract key information from lines
+        parts: list[str] = []
+
+        for line in lines:
+            # Skip archive markers for compression
+            if "[N messages archived" in line:
+                continue
+
+            # Extract role and key content
+            if "USER:" in line:
+                # Extract first 60 chars of user message
+                import re
+
+                match = re.search(r'USER:\s*"([^"]*)"', line)
+                if match:
+                    user_text = match.group(1)[:60]
+                    parts.append(f"usr:{user_text}")
+            elif "TOOL" in line:
+                # Extract tool name
+                import re
+
+                match = re.search(r"TOOL\s+(\w+)", line)
+                if match:
+                    parts.append(f"tool:{match.group(1)}")
+            elif "ASST:" in line:
+                # Extract first 40 chars of assistant response
+                import re
+
+                match = re.search(r'ASST:\s*"([^"]*)"', line)
+                if match:
+                    asst_text = match.group(1)[:40]
+                    parts.append(f"asst:{asst_text}")
+            elif "*calls tools:" in line:
+                # Extract tool names
+                import re
+
+                match = re.search(r"\*calls tools:\s*(.+)", line)
+                if match:
+                    parts.append(f"calls:{match.group(1)}")
+
+        # Join with space, truncate to ~100 chars
+        result = " ".join(parts)
+        if len(result) > 100:
+            result = result[:97] + "..."
+        return f"[{len(lines)} msgs: {result}]"
 
     def get_context_summary(self) -> str:
         """Get the formatted context summary for system prompt."""
-        if not self.summary_so_far:
+        if not self.summary_lines:
             return ""
-        return f"<context-summary>\n{self.summary_so_far}\n</context-summary>"
+        return f"<context-summary>\n" + "\n".join(self.summary_lines) + "\n</context-summary>"
 
     @staticmethod
     def _find_legal_start(messages: list[dict[str, Any]]) -> int:
@@ -103,6 +172,7 @@ class Session:
         """Clear all messages and reset session to initial state."""
         self.messages = []
         self.last_archived = 0
+        self.summary_lines = []
         self.updated_at = datetime.now()
 
     @staticmethod
@@ -233,7 +303,7 @@ class SessionManager:
                 created_at=created_at or datetime.now(),
                 metadata=metadata,
                 last_archived=last_archived,
-                summary_so_far=data.get("summary_so_far", ""),
+                summary_lines=data.get("summary_lines", []),
             )
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)
@@ -251,7 +321,7 @@ class SessionManager:
                 "updated_at": session.updated_at.isoformat(),
                 "metadata": session.metadata,
                 "last_archived": session.last_archived,
-                "summary_so_far": session.summary_so_far,
+                "summary_lines": session.summary_lines,
             }
             f.write(json.dumps(metadata_line, ensure_ascii=False) + "\n")
             for msg in session.messages:
@@ -263,32 +333,38 @@ class SessionManager:
         """
         Archive old messages to JSONL file for a session.
 
+        Messages are REMOVED from session.messages after archiving to JSONL.
+        JSONL is the source of truth for archived messages.
+
         Args:
             session: Session to archive messages from
 
         Returns:
             Tuple of (archived messages, archive note for summary)
         """
-        unarchived = session.messages[session.last_archived :]
-        if not unarchived:
+        # Archive messages from beginning up to last_archived index
+        to_archive = session.messages[: session.last_archived]
+
+        if not to_archive:
             return [], ""
 
-        msg_count = len(unarchived)
+        msg_count = len(to_archive)
 
         # Create archive file path
         archive_file = self.archive_dir / f"{safe_filename(session.key)}.jsonl"
 
         # Append to archive file
         with open(archive_file, "a", encoding="utf-8") as f:
-            for msg in unarchived:
+            for msg in to_archive:
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
-        # Update marker
-        session.last_archived = len(session.messages)
+        # REMOVE messages from session.messages (not just mark)
+        session.messages = session.messages[session.last_archived :]
+        session.last_archived = 0  # Reset marker since messages are removed
 
         # Create archive note for summary
         archive_note = f"[--:--] [{msg_count} messages archived - see archive for more]"
-        return unarchived, archive_note
+        return to_archive, archive_note
 
     def read_archive(
         self, session_key: str, offset: int = 0, limit: int = 15
