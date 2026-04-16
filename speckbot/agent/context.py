@@ -131,6 +131,14 @@ Skills with available="false" need dependencies installed first.
 - Tool results exceeding {self.tool_result_max_chars:,} characters will be truncated.
 - Design queries to fit within this limit when possible.
 
+## Saving Memories
+When user wants to save something:
+1. Ask: knowledge or project?
+2. Ask: topic name (e.g., 'anjir-hidayat-research')
+3. Ask: filename (e.g., 'analysis', 'notes')
+4. Call save_knowledge(topic, filename, session_key) or save_project(topic, filename, session_key)
+The tools automatically fetch from conversation memory.
+
 ## Guidelines
 - Read before edit. Re-read after write.
 - Don't assume files exist.
