@@ -877,7 +877,9 @@ class MemoryConsolidator:
                     )
                     return
 
-                # Process each segment - keep original content with markers (don't summarize)
+                # Collect summaries FIRST, then append at BOTTOM
+                summaries_to_append: list[str] = []
+
                 for start_idx, end_idx, seg_type in boundaries:
                     if end_idx <= session.last_archived:
                         continue
@@ -896,18 +898,24 @@ class MemoryConsolidator:
                         self.active_window_tokens,
                     )
 
-                    # Extract summary with summarization + add type marker
+                    # SKIP: don't summarize, just mark as processed
+                    if seg_type == "skip":
+                        session.last_archived = end_idx
+                        continue
+
+                    # CONV/TOOL: extract summary with marker
                     summary = self.summary_extractor.extract(chunk)
                     if summary:
-                        # Add segment type marker
                         marker = f"[{seg_type.upper()}:] "
                         summary_lines = summary.split("\n")
                         summary_lines[0] = marker + summary_lines[0]
-                        summary = "\n".join(summary_lines)
-                        session.append_summary(summary)
+                        summaries_to_append.append("\n".join(summary_lines))
 
-                    # Update marker before archiving
                     session.last_archived = end_idx
+
+                # NOW append all summaries at BOTTOM (in order)
+                for summary in summaries_to_append:
+                    session.append_summary(summary)
 
                 # Archive all marked messages to JSONL
                 archived, archive_note = self.sessions.archive_session(session)
