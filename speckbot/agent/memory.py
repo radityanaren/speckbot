@@ -207,7 +207,7 @@ def segment_messages(
             i = j
         elif role == "assistant" and not tool_calls:
             # Check if this assistant is RIGHT AFTER a tool result
-            # If so, it's a "skip" (keep in RAM)
+            # If so, it's a "skip" (keep in RAM, but continues flow)
             prev_idx = i - 1
             is_after_tool = prev_idx >= 0 and messages[prev_idx].get("role") == "tool"
 
@@ -217,34 +217,28 @@ def segment_messages(
                 i += 1
             else:
                 # Normal assistant without tool_calls - part of conversation
+                # Continue ANY content until we hit user or assistant with tool_calls
                 start = i
                 j = i + 1
                 while j < len(messages):
                     next_role = messages[j].get("role", "")
                     next_tool_calls = messages[j].get("tool_calls", [])
-                    # Continue conv until we hit user or assistant with tool_calls
-                    if next_role == "user" or (next_role == "assistant" and next_tool_calls):
+                    # Continue conv until we hit assistant WITH tool_calls
+                    if next_role == "assistant" and next_tool_calls:
                         break
-                    if next_role == "assistant" and not next_tool_calls:
-                        # Check if this assistant is after a tool result (skip)
-                        if j > 0 and messages[j - 1].get("role") == "tool":
-                            break
                     j += 1
                 segments.append((start, j, "conv"))
                 i = j
         elif role == "user":
             # Conversation block starts with user
+            # Continue ANY content until we hit assistant WITH tool_calls
             start = i
             j = i + 1
             while j < len(messages):
                 next_role = messages[j].get("role", "")
                 next_tool_calls = messages[j].get("tool_calls", [])
-                if next_role == "user" or (next_role == "assistant" and next_tool_calls):
+                if next_role == "assistant" and next_tool_calls:
                     break
-                if next_role == "assistant" and not next_tool_calls:
-                    # Check if skip
-                    if j > 0 and messages[j - 1].get("role") == "tool":
-                        break
                 j += 1
             segments.append((start, j, "conv"))
             i = j
@@ -883,7 +877,7 @@ class MemoryConsolidator:
                     )
                     return
 
-                # Process each segment with appropriate summarization
+                # Process each segment - keep original content with markers (don't summarize)
                 for start_idx, end_idx, seg_type in boundaries:
                     if end_idx <= session.last_archived:
                         continue
@@ -902,12 +896,11 @@ class MemoryConsolidator:
                         self.active_window_tokens,
                     )
 
-                    # Extract summary with appropriate marker
+                    # Extract summary with summarization + add type marker
                     summary = self.summary_extractor.extract(chunk)
                     if summary:
                         # Add segment type marker
                         marker = f"[{seg_type.upper()}:] "
-                        # Prepend marker to first line of summary
                         summary_lines = summary.split("\n")
                         summary_lines[0] = marker + summary_lines[0]
                         summary = "\n".join(summary_lines)
