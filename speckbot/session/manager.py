@@ -30,7 +30,9 @@ class Session:
     metadata: dict[str, Any] = field(default_factory=dict)
     last_archived: int = 0  # Number of messages already archived
     summary_lines: list[str] = field(default_factory=list)  # Summary as list of lines
-    _max_summary_lines: int = 20  # Max lines before recursive compression
+    _max_summary_lines: int = (
+        40  # Max lines before recursive compression (increased for segmented summaries)
+    )
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
         """Add a message to the session."""

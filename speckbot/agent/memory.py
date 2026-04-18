@@ -163,6 +163,98 @@ class MessageSummaryExtractor:
         return text[:limit], True
 
 
+# =============================================================================
+# Message Segmentation for Segmented Conveyor Belt
+# =============================================================================
+
+
+def segment_messages(
+    messages: list[dict[str, Any]],
+) -> list[tuple[int, int, str]]:
+    """Segment messages into conv/tool/skip blocks for segmented summarization.
+
+    Args:
+        messages: List of message dicts to segment
+
+    Returns:
+        List of (start_idx, end_idx, segment_type) tuples.
+        - 'conv': conversation block (user + assistant without tool_calls)
+        - 'tool': tool call block (assistant with tool_calls + tool results)
+        - 'skip': assistant content AFTER tool result (keep in RAM, don't summarize)
+    """
+    if not messages:
+        return []
+
+    segments: list[tuple[int, int, str]] = []
+    i = 0
+
+    while i < len(messages):
+        role = messages[i].get("role", "")
+        tool_calls = messages[i].get("tool_calls", [])
+
+        if role == "assistant" and tool_calls:
+            # Tool call block: assistant with tool_calls + all following tool results
+            start = i
+            # Find the end: either next assistant OR end of messages
+            j = i + 1
+            while j < len(messages):
+                next_role = messages[j].get("role", "")
+                if next_role != "tool":
+                    break
+                j += 1
+            # Mark as tool block (includes tool results)
+            segments.append((start, j, "tool"))
+            i = j
+        elif role == "assistant" and not tool_calls:
+            # Check if this assistant is RIGHT AFTER a tool result
+            # If so, it's a "skip" (keep in RAM)
+            prev_idx = i - 1
+            is_after_tool = prev_idx >= 0 and messages[prev_idx].get("role") == "tool"
+
+            if is_after_tool:
+                # Skip block - assistant after tool, keep content in RAM
+                segments.append((i, i + 1, "skip"))
+                i += 1
+            else:
+                # Normal assistant without tool_calls - part of conversation
+                start = i
+                j = i + 1
+                while j < len(messages):
+                    next_role = messages[j].get("role", "")
+                    next_tool_calls = messages[j].get("tool_calls", [])
+                    # Continue conv until we hit user or assistant with tool_calls
+                    if next_role == "user" or (next_role == "assistant" and next_tool_calls):
+                        break
+                    if next_role == "assistant" and not next_tool_calls:
+                        # Check if this assistant is after a tool result (skip)
+                        if j > 0 and messages[j - 1].get("role") == "tool":
+                            break
+                    j += 1
+                segments.append((start, j, "conv"))
+                i = j
+        elif role == "user":
+            # Conversation block starts with user
+            start = i
+            j = i + 1
+            while j < len(messages):
+                next_role = messages[j].get("role", "")
+                next_tool_calls = messages[j].get("tool_calls", [])
+                if next_role == "user" or (next_role == "assistant" and next_tool_calls):
+                    break
+                if next_role == "assistant" and not next_tool_calls:
+                    # Check if skip
+                    if j > 0 and messages[j - 1].get("role") == "tool":
+                        break
+                j += 1
+            segments.append((start, j, "conv"))
+            i = j
+        else:
+            # Other roles (tool, system, etc.) - skip
+            i += 1
+
+    return segments
+
+
 # Tool for consolidation (internal LLM call) - just save_memory
 _CONSOLIDATION_TOOL = [
     {
@@ -617,268 +709,6 @@ class MemoryStore:
         logger.warning("Memory consolidation degraded: raw-archived {} messages", len(messages))
 
 
-# =============================================================================
-# Memory Tools for Agent
-# =============================================================================
-
-
-class SaveKnowledgeTool:
-    """Tool for saving knowledge to workspace. Fetches from conversation memory."""
-
-    def __init__(self, store: MemoryStore, sessions: "SessionManager"):
-        from speckbot.agent.tools.base import Tool
-
-        self._store = store
-        self._sessions = sessions
-        self._tool = _SaveKnowledgeToolImpl(store, sessions)
-
-    @property
-    def name(self) -> str:
-        return "save_knowledge"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Save knowledge to a topic folder. IMPORTANT: The 'content' parameter should be derived "
-            "from the CURRENT CONVERSATION MEMORY. Ask the user what topic/folder to save under, "
-            "then fetch the relevant conversation content to save."
-        )
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "topic": {
-                    "type": "string",
-                    "description": "Broad topic/folder name (e.g., 'anjir-hidayat-research'). Use lowercase with hyphens.",
-                },
-                "file_type": {
-                    "type": "string",
-                    "description": "Filename without .md (e.g., 'analysis', 'notes'). Default: 'notes'",
-                    "default": "notes",
-                },
-                "session_key": {
-                    "type": "string",
-                    "description": "The current session key to fetch conversation from (e.g., 'discord:123').",
-                },
-            },
-            "required": ["topic", "session_key"],
-        }
-
-    async def execute(self, topic: str, file_type: str = "notes", session_key: str = "") -> str:
-        """
-        Execute save_knowledge tool.
-
-        Fetches conversation from session memory and saves to knowledge folder.
-        """
-        try:
-            return await self._tool.save_knowledge(topic, file_type, session_key)
-        except Exception as e:
-            logger.exception("Error in save_knowledge tool")
-            return f"Error saving knowledge: {e}"
-
-
-class _SaveKnowledgeToolImpl:
-    """Internal implementation that fetches from session memory."""
-
-    def __init__(self, store: MemoryStore, sessions: "SessionManager"):
-        self._store = store
-        self._sessions = sessions
-
-    async def save_knowledge(self, topic: str, file_type: str, session_key: str) -> str:
-        """
-        Save knowledge by fetching conversation from session.
-
-        The actual content to save should come from the current conversation history.
-        This tool fetches the relevant messages from the session.
-        """
-        if not topic:
-            return "Error: topic is required"
-
-        if not session_key:
-            return "Error: session_key is required to fetch conversation"
-
-        # Fetch conversation from session memory
-        session = self._sessions.get_or_create(session_key)
-        messages = session.messages
-
-        if not messages:
-            return "Error: No conversation found in session memory"
-
-        # Build content from conversation
-        content = self._build_content_from_messages(messages)
-
-        if not content:
-            return "Error: Could not extract content from conversation"
-
-        # Save to knowledge folder
-        self._store.save_knowledge(topic, content, file_type or "notes")
-
-        logger.info("Saved knowledge: {}/{}", topic, file_type)
-        return f"Saved to knowledges/{topic}/{file_type or 'notes'}.md"
-
-    def _build_content_from_messages(self, messages: list[dict[str, Any]]) -> str:
-        """Build knowledge content from conversation messages."""
-        lines = []
-        for msg in messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            timestamp = msg.get("timestamp", "")
-
-            if not content:
-                continue
-
-            # Format timestamp
-            ts = ""
-            if timestamp:
-                try:
-                    dt = datetime.fromisoformat(timestamp)
-                    ts = dt.strftime("%H:%M")
-                except Exception:
-                    pass
-
-            # Extract content based on role
-            if role == "user":
-                lines.append(f"**User** ({ts}): {content}")
-            elif role == "assistant":
-                # Check for tool calls
-                tool_calls = msg.get("tool_calls", [])
-                if tool_calls:
-                    tool_names = [
-                        tc.get("function", {}).get("name", "unknown") for tc in tool_calls
-                    ]
-                    lines.append(f"**Assistant** ({ts}): *calls tools: {', '.join(tool_names)}*")
-                else:
-                    # Truncate long responses
-                    display = content[:500] + "..." if len(content) > 500 else content
-                    lines.append(f"**Assistant** ({ts}): {display}")
-            elif role == "tool":
-                tool_name = msg.get("name", "tool")
-                # Truncate tool results
-                display = content[:200] + "..." if len(content) > 200 else content
-                lines.append(f"*[{tool_name} result]: {display}*")
-
-        return "\n\n".join(lines)
-
-
-class SaveProjectTool:
-    """Tool for saving project info to workspace."""
-
-    def __init__(self, store: MemoryStore, sessions: "SessionManager"):
-        self._store = store
-        self._sessions = sessions
-        self._tool = _SaveProjectToolImpl(store, sessions)
-
-    @property
-    def name(self) -> str:
-        return "save_project"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Save project info to a topic folder. IMPORTANT: The content should be derived "
-            "from the CURRENT CONVERSATION MEMORY. Ask the user what project/folder to save under, "
-            "then fetch the relevant conversation content to save."
-        )
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "topic": {
-                    "type": "string",
-                    "description": "Project/folder name (e.g., 'my-bot-project'). Use lowercase with hyphens.",
-                },
-                "file_type": {
-                    "type": "string",
-                    "description": "Filename without .md (e.g., 'strategy', 'setup'). Default: 'notes'",
-                    "default": "notes",
-                },
-                "session_key": {
-                    "type": "string",
-                    "description": "The current session key to fetch conversation from (e.g., 'discord:123').",
-                },
-            },
-            "required": ["topic", "session_key"],
-        }
-
-    async def execute(self, topic: str, file_type: str = "notes", session_key: str = "") -> str:
-        """Execute save_project tool."""
-        try:
-            return await self._tool.save_project(topic, file_type, session_key)
-        except Exception as e:
-            logger.exception("Error in save_project tool")
-            return f"Error saving project: {e}"
-
-
-class _SaveProjectToolImpl:
-    """Internal implementation that fetches from session memory."""
-
-    def __init__(self, store: MemoryStore, sessions: "SessionManager"):
-        self._store = store
-        self._sessions = sessions
-
-    async def save_project(self, topic: str, file_type: str, session_key: str) -> str:
-        """Save project by fetching conversation from session."""
-        if not topic:
-            return "Error: topic is required"
-
-        if not session_key:
-            return "Error: session_key is required to fetch conversation"
-
-        session = self._sessions.get_or_create(session_key)
-        messages = session.messages
-
-        if not messages:
-            return "Error: No conversation found in session memory"
-
-        content = self._build_content_from_messages(messages)
-
-        if not content:
-            return "Error: Could not extract content from conversation"
-
-        self._store.save_project(topic, content, file_type or "notes")
-
-        logger.info("Saved project: {}/{}", topic, file_type)
-        return f"Saved to projects/{topic}/{file_type or 'notes'}.md"
-
-    def _build_content_from_messages(self, messages: list[dict[str, Any]]) -> str:
-        """Build project content from conversation messages."""
-        lines = []
-        for msg in messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            timestamp = msg.get("timestamp", "")
-
-            if not content:
-                continue
-
-            ts = ""
-            if timestamp:
-                try:
-                    dt = datetime.fromisoformat(timestamp)
-                    ts = dt.strftime("%H:%M")
-                except Exception:
-                    pass
-
-            if role == "user":
-                lines.append(f"**User** ({ts}): {content}")
-            elif role == "assistant":
-                tool_calls = msg.get("tool_calls", [])
-                if tool_calls:
-                    tool_names = [
-                        tc.get("function", {}).get("name", "unknown") for tc in tool_calls
-                    ]
-                    lines.append(f"**Assistant** ({ts}): *calls tools: {', '.join(tool_names)}*")
-                else:
-                    display = content[:500] + "..." if len(content) > 500 else content
-                    lines.append(f"**Assistant** ({ts}): {display}")
-
-        return "\n\n".join(lines)
-
-
 class MemoryConsolidator:
     """Owns consolidation policy, locking, and session offset updates."""
 
@@ -922,23 +752,54 @@ class MemoryConsolidator:
         self,
         session: Session,
         tokens_to_remove: int,
-    ) -> tuple[int, int] | None:
-        """Pick a user-turn boundary that removes enough old prompt tokens."""
-        start = session.last_archived
-        if start >= len(session.messages) or tokens_to_remove <= 0:
-            return None
+    ) -> list[tuple[int, int, str]]:
+        """Pick consolidation boundaries using segmented approach.
 
-        removed_tokens = 0
-        last_boundary: tuple[int, int] | None = None
-        for idx in range(start, len(session.messages)):
-            message = session.messages[idx]
-            if idx > start and message.get("role") == "user":
-                last_boundary = (idx, removed_tokens)
-                if removed_tokens >= tokens_to_remove:
-                    return last_boundary
-            removed_tokens += estimate_message_tokens(message)
+        Returns a list of (start_idx, end_idx, segment_type) tuples for archiving.
+        Each segment is summarized with appropriate markers.
+        - 'conv': conversation summary with [conv:] marker
+        - 'tool': tool call summary with [tool:] marker
+        - 'skip': not returned (kept in RAM)
+        """
+        start_idx = session.last_archived
+        if start_idx >= len(session.messages) or tokens_to_remove <= 0:
+            return []
 
-        return last_boundary
+        unarchived = session.messages[start_idx:]
+        segments = segment_messages(unarchived)
+
+        # Calculate token counts for each segment and find valid boundaries
+        # We only archive 'conv' and 'tool' segments, skip 'skip' segments
+        boundaries: list[tuple[int, int, str]] = []
+        accumulated_tokens = 0
+        boundary_end = start_idx  # cumulative end position for boundaries
+
+        for seg_start, seg_end, seg_type in segments:
+            if seg_type == "skip":
+                # Don't archive skip segments - update marker
+                boundary_end = start_idx + seg_end
+                continue
+
+            # Calculate tokens for this segment
+            seg_tokens = 0
+            for i in range(seg_start, seg_end):
+                if start_idx + i < len(session.messages):
+                    seg_tokens += estimate_message_tokens(session.messages[start_idx + i])
+
+            accumulated_tokens += seg_tokens
+            actual_start = boundary_end
+            actual_end = start_idx + seg_end
+
+            if accumulated_tokens >= tokens_to_remove:
+                # Found enough to remove - add this segment as final boundary
+                boundaries.append((actual_start, actual_end, seg_type))
+                break
+            else:
+                # Keep accumulating - record boundary at segment end
+                boundaries.append((actual_start, actual_end, seg_type))
+                boundary_end = actual_end
+
+        return boundaries
 
     def estimate_session_prompt_tokens(self, session: Session) -> tuple[int, str]:
         """Estimate current prompt size for the normal session history view."""
@@ -1012,11 +873,11 @@ class MemoryConsolidator:
                 if estimated <= effective_threshold:
                     return
 
-                # Find boundary at user turn
-                boundary = self.pick_consolidation_boundary(
+                # Find boundaries using segmented approach
+                boundaries = self.pick_consolidation_boundary(
                     session, max(1, estimated - effective_threshold)
                 )
-                if boundary is None:
+                if not boundaries:
                     logger.debug(
                         "Conveyor belt: no safe boundary for {} (round {})",
                         session.key,
@@ -1024,32 +885,41 @@ class MemoryConsolidator:
                     )
                     return
 
-                end_idx = boundary[0]
-                chunk = session.messages[session.last_archived : end_idx]
-                if not chunk:
-                    return
+                # Process each segment with appropriate summarization
+                for start_idx, end_idx, seg_type in boundaries:
+                    if end_idx <= session.last_archived:
+                        continue
 
-                logger.info(
-                    "Conveyor belt round {} for {}: archiving {} msgs, {}/{}",
-                    round_num,
-                    session.key,
-                    len(chunk),
-                    estimated,
-                    effective_threshold,
-                )
+                    chunk = session.messages[session.last_archived : end_idx]
+                    if not chunk:
+                        continue
 
-                # UPDATE the marker before archiving
-                session.last_archived = end_idx
+                    logger.info(
+                        "Conveyor belt round {} for {}: archiving {} msgs ({}), {}/{}",
+                        round_num,
+                        session.key,
+                        len(chunk),
+                        seg_type,
+                        estimated,
+                        effective_threshold,
+                    )
 
-                # Extract summary BEFORE archiving (to preserve context)
-                summary = self.summary_extractor.extract(chunk)
+                    # Extract summary with appropriate marker
+                    summary = self.summary_extractor.extract(chunk)
+                    if summary:
+                        # Add segment type marker
+                        marker = f"[{seg_type.upper()}:] "
+                        # Prepend marker to first line of summary
+                        summary_lines = summary.split("\n")
+                        summary_lines[0] = marker + summary_lines[0]
+                        summary = "\n".join(summary_lines)
+                        session.append_summary(summary)
 
-                # Archive to JSONL and get archive note
+                    # Update marker before archiving
+                    session.last_archived = end_idx
+
+                # Archive all marked messages to JSONL
                 archived, archive_note = self.sessions.archive_session(session)
-
-                # Append summary to session's accumulated summary
-                if summary:
-                    session.append_summary(summary)
                 if archive_note:
                     session.append_summary(archive_note)
 

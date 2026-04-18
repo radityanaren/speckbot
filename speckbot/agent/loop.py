@@ -239,7 +239,8 @@ class AgentLoop:
 
         # Register memory tools (save_knowledge, save_project)
         # These fetch from conversation session memory
-        from speckbot.agent.memory import MemoryStore, SaveKnowledgeTool, SaveProjectTool
+        from speckbot.agent.memory import MemoryStore
+        from speckbot.agent.tools.save import SaveKnowledgeTool, SaveProjectTool
 
         memory_store = MemoryStore(self.workspace)
         self.tools.register(SaveKnowledgeTool(store=memory_store, sessions=self.sessions))
