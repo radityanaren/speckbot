@@ -237,15 +237,6 @@ class AgentLoop:
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
 
-        # Register memory tools (save_knowledge, save_project)
-        # These fetch from conversation session memory
-        from speckbot.agent.memory import MemoryStore
-        from speckbot.agent.tools.save import SaveKnowledgeTool, SaveProjectTool
-
-        memory_store = MemoryStore(self.workspace)
-        self.tools.register(SaveKnowledgeTool(store=memory_store, sessions=self.sessions))
-        self.tools.register(SaveProjectTool(store=memory_store, sessions=self.sessions))
-
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
         if self._mcp_connected or self._mcp_connecting or not self._mcp_servers:
