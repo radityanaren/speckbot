@@ -135,9 +135,9 @@ Skills with available="false" need dependencies installed first.
 When user wants to save something:
 1. Ask: knowledge or project?
 2. Ask: topic name (e.g., 'anjir-hidayat-research')
-3. Ask: filename (e.g., 'analysis', 'notes')
-4. Call save_knowledge(topic, filename, session_key) or save_project(topic, filename, session_key)
-The tools automatically fetch from conversation memory.
+3. Ask: file name (e.g., 'analysis', 'notes')
+4. Call save_knowledge(topic, content, file_type) or save_project(topic, content, file_type)
+IMPORTANT: You must provide the 'content' parameter - summarize the relevant conversation into clean markdown.
 
 ## Guidelines
 - Read before edit. Re-read after write.
