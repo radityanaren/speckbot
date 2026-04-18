@@ -185,6 +185,16 @@ def segment_messages(
     if not messages:
         return []
 
+    # DEBUG: Log message roles for debugging
+    logger.debug(
+        "segment_messages: {} messages - roles: {}",
+        len(messages),
+        [
+            f"{m.get('role', '?')}:{(m.get('tool_calls') and 'tool') or m.get('content', '')[:30]}"
+            for m in messages[:10]
+        ],
+    )
+
     segments: list[tuple[int, int, str]] = []
     i = 0
 
@@ -245,6 +255,12 @@ def segment_messages(
         else:
             # Other roles (tool, system, etc.) - skip
             i += 1
+
+    # DEBUG: Log segments result
+    logger.debug(
+        "segment_messages result: {}",
+        [(start, end, stype) for start, end, stype in segments],
+    )
 
     return segments
 

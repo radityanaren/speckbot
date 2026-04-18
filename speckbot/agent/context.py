@@ -131,6 +131,13 @@ Skills with available="false" need dependencies installed first.
 - Tool results exceeding {self.tool_result_max_chars:,} characters will be truncated.
 - Design queries to fit within this limit when possible.
 
+## CRITICAL: Current Date and Time
+- The current date is **April 2026** (not 2024, not alternate timeline).
+- Today's date: **April 19, 2026** (Sunday).
+- When searching the web for current information, search for **April 2026** data, NOT past years.
+- If user asks about "current" or "recent" events, assume they mean April 2026.
+- **This is NOT a hypothetical scenario - it is April 2026 right now.**
+
 ## Saving Memories
 When user wants to save something:
 1. Ask: knowledge or project?
