@@ -6,11 +6,14 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from speckbot.agent.tools.base import Tool
+from speckbot.agent.memory import MemoryStore
+
 if TYPE_CHECKING:
     from speckbot.session.manager import SessionManager
 
 
-class SaveKnowledgeTool:
+class SaveKnowledgeTool(Tool):
     """Tool for saving knowledge to workspace. Fetches from conversation memory."""
 
     def __init__(self, store: "MemoryStore", sessions: "SessionManager"):
@@ -49,6 +52,17 @@ class SaveKnowledgeTool:
                 },
             },
             "required": ["topic", "session_key"],
+        }
+
+    def to_schema(self) -> dict[str, Any]:
+        """Convert to JSON schema for LLM function calling."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
         }
 
     async def execute(self, topic: str, file_type: str = "notes", session_key: str = "") -> str:
@@ -133,7 +147,7 @@ class _SaveKnowledgeToolImpl:
         return "\n\n".join(lines)
 
 
-class SaveProjectTool:
+class SaveProjectTool(Tool):
     """Tool for saving project info to workspace."""
 
     def __init__(self, store: "MemoryStore", sessions: "SessionManager"):
@@ -172,6 +186,17 @@ class SaveProjectTool:
                 },
             },
             "required": ["topic", "session_key"],
+        }
+
+    def to_schema(self) -> dict[str, Any]:
+        """Convert to JSON schema for LLM function calling."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
         }
 
     async def execute(self, topic: str, file_type: str = "notes", session_key: str = "") -> str:
