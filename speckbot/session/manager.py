@@ -10,7 +10,7 @@ from typing import Any
 from loguru import logger
 
 from speckbot.config.paths import get_legacy_sessions_dir
-from speckbot.utils.helpers import ensure_dir, safe_filename
+from speckbot.utils.helpers import ensure_dir, safe_filename, estimate_message_tokens
 
 
 @dataclass
@@ -144,30 +144,44 @@ class Session:
                                     declared.add(str(tc["id"]))
         return start
 
-    def get_history(self, max_messages: int = 500) -> list[dict[str, Any]]:
-        """Return unarchived messages for LLM input, aligned to a legal tool-call boundary."""
-        unarchived = self.messages[self.last_archived :]
-        sliced = unarchived[-max_messages:]
+    def get_history(
+        self, max_messages: int = 500, active_window_tokens: int = 0
+    ) -> list[dict[str, Any]]:
+        """Return messages for LLM input, aligned to a legal tool-call boundary.
+
+        Includes HARD CLIPPING: drops oldest messages if over token limit.
+        """
+        # Read ALL messages from session (no last_archived filtering)
+        all_msgs = self.messages[-max_messages:]
 
         # Drop leading non-user messages to avoid starting mid-turn when possible.
-        for i, message in enumerate(sliced):
+        for i, message in enumerate(all_msgs):
             if message.get("role") == "user":
-                sliced = sliced[i:]
+                all_msgs = all_msgs[i:]
                 break
 
         # Some providers reject orphan tool results if the matching assistant
         # tool_calls message fell outside the fixed-size history window.
-        start = self._find_legal_start(sliced)
+        start = self._find_legal_start(all_msgs)
         if start:
-            sliced = sliced[start:]
+            all_msgs = all_msgs[start:]
 
         out: list[dict[str, Any]] = []
-        for message in sliced:
+        for message in all_msgs:
             entry: dict[str, Any] = {"role": message["role"], "content": message.get("content", "")}
             for key in ("tool_calls", "tool_call_id", "name"):
                 if key in message:
                     entry[key] = message[key]
             out.append(entry)
+
+        # HARD CLIPPING: Drop oldest messages until under limit
+        if active_window_tokens > 0:
+            while (
+                len(out) > 1
+                and sum(estimate_message_tokens(msg) for msg in out) > active_window_tokens
+            ):
+                out = out[1:]  # Drop oldest
+
         return out
 
     def clear(self) -> None:

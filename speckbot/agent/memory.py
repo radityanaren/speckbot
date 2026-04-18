@@ -829,17 +829,15 @@ class MemoryConsolidator:
         Archive old messages until prompt fits within active_window_tokens.
         Uses conveyor belt: messages are archived to JSONL, user reads on-demand.
 
-        Safety: Uses context_headroom to calculate effective threshold, giving
-        a buffer for estimation errors and preventing overflow crashes.
+        The agent reads ALL messages (see session.get_history()).
+        Archiving is triggered when estimated > active_window_tokens.
         """
         if not session.messages or self.active_window_tokens <= 0:
             return
 
         lock = self.get_lock(session.key)
         async with lock:
-            # Apply headroom: effective threshold = (1 - headroom%) of active_window_tokens
-            # This gives a safety buffer for estimation errors
-            effective_threshold = int(self.active_window_tokens * (1 - self.context_headroom / 100))
+            # Headroom is just for logging - threshold is active_window_tokens
             estimated, source = self.estimate_session_prompt_tokens(session)
             if estimated <= 0:
                 return
@@ -847,35 +845,35 @@ class MemoryConsolidator:
             # Check if initial context (system + tools + bootstrap) already exceeds threshold
             if session.key not in self._checked_initial_overflow:
                 self._checked_initial_overflow.add(session.key)
-                if estimated > effective_threshold:
+                if estimated > self.active_window_tokens:
                     logger.warning(
-                        "Conveyor belt: Initial context ({} tokens) exceeds effective threshold "
+                        "Conveyor belt: Initial context ({} tokens) exceeds active_window_tokens "
                         "({} tokens, {}% headroom). Consider increasing active_window_tokens or "
                         "reducing context_headroom. Processing will continue with degraded context.",
                         estimated,
-                        effective_threshold,
+                        self.active_window_tokens,
                         self.context_headroom,
                     )
 
-            # If still under effective threshold, no archiving needed
-            if estimated < effective_threshold:
+            # If still under active_window_tokens, no archiving needed
+            if estimated < self.active_window_tokens:
                 logger.debug(
                     "Conveyor belt idle {}: {}/{} ({}% headroom)",
                     session.key,
                     estimated,
-                    effective_threshold,
+                    self.active_window_tokens,
                     self.context_headroom,
                 )
                 return
 
-            # Archive messages until under effective threshold
+            # Archive messages until under threshold
             for round_num in range(self._max_rounds):
-                if estimated <= effective_threshold:
+                if estimated <= self.active_window_tokens:
                     return
 
                 # Find boundaries using segmented approach
                 boundaries = self.pick_consolidation_boundary(
-                    session, max(1, estimated - effective_threshold)
+                    session, max(1, estimated - self.active_window_tokens)
                 )
                 if not boundaries:
                     logger.debug(
@@ -901,7 +899,7 @@ class MemoryConsolidator:
                         len(chunk),
                         seg_type,
                         estimated,
-                        effective_threshold,
+                        self.active_window_tokens,
                     )
 
                     # Extract summary with appropriate marker

@@ -759,7 +759,10 @@ class MessageHandler:
 
         key = f"{channel}:{chat_id}"
         session = self._agent.sessions.get_or_create(key)
-        history = session.get_history(max_messages=10)  # Default: last 10 messages
+        history = session.get_history(
+            max_messages=10,
+            active_window_tokens=self._agent.active_window_tokens,
+        )
         # Get context summary from conveyor belt
         context_summary = session.get_context_summary()
 
@@ -889,7 +892,10 @@ class MessageHandler:
                 message_tool.start_turn()
 
         # Build context with history (default 10 messages)
-        history = session.get_history(max_messages=10)
+        history = session.get_history(
+            max_messages=10,
+            active_window_tokens=self._agent.active_window_tokens,
+        )
         # Get context summary from conveyor belt
         context_summary = session.get_context_summary()
         initial_messages = self._agent.context.build_messages(
