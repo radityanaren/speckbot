@@ -216,6 +216,17 @@ def segment_messages(
             segments.append((i, i + 1, "skip"))
             i += 1
         elif role == "assistant" and not tool_calls:
+            # Fallback for old messages without _is_skip - check backwards
+            # Did this assistant follow a tool result?
+            is_after_tool = False
+            for j in range(i - 1, -1, -1):
+                if messages[j].get("role") == "tool":
+                    is_after_tool = True
+                    break
+            if is_after_tool:
+                segments.append((i, i + 1, "skip"))
+                i += 1
+                continue
             # Normal assistant - part of conversation until next message boundary
             start = i
             j = i + 1
@@ -231,15 +242,18 @@ def segment_messages(
             segments.append((start, j, "conv"))
             i = j
         elif role == "user":
-            # Conversation block starts with user
+            # User block extends until: tool, assistant with tool_calls, OR _is_skip marker
+            # This ensures the user question goes WITH the tool block, not into conv
             start = i
             j = i + 1
             while j < len(messages):
                 next_role = messages[j].get("role", "")
                 next_tool_calls = messages[j].get("tool_calls", [])
+                next_is_skip = messages[j].get("_is_skip", False)
+                # Stop at tool result OR assistant with tool_calls OR skip assistant
                 if next_role == "tool" or (
                     next_role == "assistant" and next_tool_calls
-                ):
+                ) or next_is_skip:
                     break
                 j += 1
             segments.append((start, j, "conv"))
