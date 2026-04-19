@@ -924,8 +924,10 @@ class MemoryConsolidator:
                         for msg in chunk:
                             raw_content = msg.get("content", "")
                             if raw_content:
-                                # Extra newline BEFORE for vertical separation
-                                summaries_to_append.append("\n" + raw_content + "\n")
+                                # Split by newlines - each line becomes SEPARATE array element
+                                for line in raw_content.split("\n"):
+                                    if line.strip():
+                                        summaries_to_append.append(line)
                         session.last_archived = end_idx
                         continue
 
@@ -935,7 +937,10 @@ class MemoryConsolidator:
                         marker = f"[{seg_type.upper()}:] "
                         summary_lines = summary.split("\n")
                         summary_lines[0] = marker + summary_lines[0]
-                        summaries_to_append.append("\n".join(summary_lines))
+                        # Split by newlines - each line becomes SEPARATE array element
+                        for line in summary_lines:
+                            if line.strip():
+                                summaries_to_append.append(line)
 
                     session.last_archived = end_idx
 
