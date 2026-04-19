@@ -220,10 +220,18 @@ def segment_messages(
             segments.append((start, j, "tool"))
             i = j
         elif role == "assistant" and not tool_calls:
-            # Check if this assistant is RIGHT AFTER a tool result
-            # If so, it's a "skip" (keep in RAM, but continues flow)
-            prev_idx = i - 1
-            is_after_tool = prev_idx >= 0 and messages[prev_idx].get("role") == "tool"
+            # Check if this assistant comes AFTER any tool result (not just immediate previous)
+            # Look backwards through ALL messages until we hit a user message
+            is_after_tool = False
+            for j in range(i - 1, -1, -1):
+                if j < 0:
+                    break
+                prev_role = messages[j].get("role", "")
+                if prev_role == "tool":
+                    is_after_tool = True
+                    break
+                elif prev_role == "user":
+                    break  # Stop at user - not a skip context
 
             if is_after_tool:
                 # Skip block - assistant after tool, keep content in RAM
