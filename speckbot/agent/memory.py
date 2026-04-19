@@ -789,11 +789,14 @@ class MemoryConsolidator:
         boundary_end = start_idx  # cumulative end position for boundaries
 
         for seg_start, seg_end, seg_type in segments:
-            # Calculate tokens for this segment
+            # Calculate tokens for this segment AND mark messages with their type
             seg_tokens = 0
             for i in range(seg_start, seg_end):
                 if start_idx + i < len(session.messages):
-                    seg_tokens += estimate_message_tokens(session.messages[start_idx + i])
+                    msg = session.messages[start_idx + i]
+                    # Mark message with its archive type (for tracking across rounds)
+                    msg["_archived_as"] = seg_type
+                    seg_tokens += estimate_message_tokens(msg)
 
             accumulated_tokens += seg_tokens
             actual_start = boundary_end
@@ -913,11 +916,7 @@ class MemoryConsolidator:
                         self.active_window_tokens,
                     )
 
-                    # Mark each message with its archive type (for tracking across rounds)
-                    for msg in chunk:
-                        msg["_archived_as"] = seg_type
-
-                    # Extract summary - summary_extractor will skip messages with _archived_as: skip
+                    # Extract summary - messages already marked in pick_consolidation_boundary
                     summary = self.summary_extractor.extract(chunk)
                     if summary:
                         marker = f"[{seg_type.upper()}:] "
