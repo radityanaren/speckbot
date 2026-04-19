@@ -300,7 +300,8 @@ def _archive_tool_blocks(session: Session, sessions) -> None:
     boundaries = [(tool_start, tool_end, "tool")]
 
     # Process boundaries to archive
-    from speckbot.agent.context import MessageSummaryExtractor, SummaryConfig
+    # MessageSummaryExtractor is in this file, use class attributes
+    extractor = MessageSummaryExtractor(SummaryConfig())
 
     summaries_to_append: list[str] = []
     for start_idx, end_idx, seg_type in boundaries:
