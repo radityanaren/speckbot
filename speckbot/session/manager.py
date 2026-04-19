@@ -311,6 +311,8 @@ class SessionManager:
                         )
                         last_archived = data.get("last_archived", 0)
                     else:
+                        # Clear _archived_as on load to allow fresh segmentation
+                        data.pop("_archived_as", None)
                         messages.append(data)
 
             return Session(
@@ -374,8 +376,12 @@ class SessionManager:
             for msg in to_archive:
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
-        # REMOVE messages from session.messages (not just mark)
-        session.messages = session.messages[session.last_archived :]
+        # REMOVE messages from session.messages (not just mark) - shallow copy keeps dict refs
+        remaining = session.messages[session.last_archived :]
+        # Clear _archived_as markers from remaining messages for next round
+        for msg in remaining:
+            msg.pop("_archived_as", None)
+        session.messages = remaining
         session.last_archived = 0  # Reset marker since messages are removed
 
         # Create archive note for summary

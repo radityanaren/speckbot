@@ -787,28 +787,64 @@ class MemoryConsolidator:
         if start_idx >= len(session.messages) or tokens_to_remove <= 0:
             return []
 
-        unarchived = session.messages[start_idx:]
-        segments = segment_messages(unarchived)
+        # Check messages from last_archived position - if already have _archived_as, use that type
+        # This prevents re-segmenting already-archived messages incorrectly
+        fixed_segments: list[tuple[int, int, str]] = []
+        i = start_idx
+        while i < len(session.messages):
+            msg = session.messages[i]
+            archived_type = msg.get("_archived_as")
+            
+            if archived_type:
+                # This message was already processed - use its type
+                end = i + 1
+                # Find end of this contiguous block
+                while end < len(session.messages) and session.messages[end].get("_archived_as") == archived_type:
+                    end += 1
+                fixed_segments.append((i, end, archived_type))
+                i = end
+            else:
+                # Not processed yet - will be segmented normally
+                break
+
+        # If we have pre-processed messages, add them as a boundary
+        if fixed_segments:
+            first_end = fixed_segments[0][1]  # where unarchived starts in session.messages
+            unarchived = session.messages[first_end:]
+        else:
+            first_end = start_idx
+            unarchived = session.messages[start_idx:]
+
+        # Segment only the unprocessed messages
+        if unarchived:
+            segments = segment_messages(unarchived)
+        else:
+            segments = []
+
+        # Combine: pre-processed + new segments (apply start_idx offset to new segments)
+        combined = fixed_segments.copy()
+        for seg_start, seg_end, seg_type in segments:
+            combined.append((seg_start + first_end, seg_end + first_end, seg_type))
 
         # Calculate token counts for each segment and find valid boundaries
-        # We only archive 'conv' and 'tool' segments, skip 'skip' segments
         boundaries: list[tuple[int, int, str]] = []
         accumulated_tokens = 0
         boundary_end = start_idx  # cumulative end position for boundaries
 
-        for seg_start, seg_end, seg_type in segments:
-            # Calculate tokens for this segment AND mark messages with their type
+        for seg_start, seg_end, seg_type in combined:
+            # Skip tokens for segments marked as 'skip'
             seg_tokens = 0
             for i in range(seg_start, seg_end):
-                if start_idx + i < len(session.messages):
-                    msg = session.messages[start_idx + i]
-                    # Mark message with its archive type (for tracking across rounds)
-                    msg["_archived_as"] = seg_type
-                    seg_tokens += estimate_message_tokens(msg)
+                if i < len(session.messages):
+                    msg = session.messages[i]
+                    # Update marker but don't double-count skip messages
+                    if seg_type != "skip":
+                        msg["_archived_as"] = seg_type
+                        seg_tokens += estimate_message_tokens(msg)
 
             accumulated_tokens += seg_tokens
             actual_start = boundary_end
-            actual_end = start_idx + seg_end
+            actual_end = seg_end
 
             if accumulated_tokens >= tokens_to_remove:
                 # Found enough to remove - add this segment as final boundary
