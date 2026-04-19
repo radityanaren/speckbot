@@ -572,6 +572,14 @@ class AgentLoop:
             role, content = entry.get("role"), entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
+
+            # MARK SKIP: Explicitly mark assistant response AFTER tool results
+            # This is used by the conveyor belt to skip summarization
+            if role == "assistant" and session.messages:
+                last_msg = session.messages[-1]
+                if last_msg.get("role") == "tool":
+                    entry["_is_skip"] = True
+
             if (
                 role == "tool"
                 and isinstance(content, str)
@@ -966,6 +974,13 @@ class MessageHandler:
             role, content = entry.get("role"), entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
+
+            # MARK SKIP: Explicitly mark assistant response AFTER tool results
+            if role == "assistant" and session.messages:
+                last_msg = session.messages[-1]
+                if last_msg.get("role") == "tool":
+                    entry["_is_skip"] = True
+
             if (
                 role == "tool"
                 and isinstance(content, str)

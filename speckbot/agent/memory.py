@@ -174,33 +174,23 @@ class MessageSummaryExtractor:
 
 def segment_messages(
     messages: list[dict[str, Any]],
-    prev_role: str | None = None,
 ) -> list[tuple[int, int, str]]:
     """Segment messages into conv/tool/skip blocks for segmented summarization.
 
+    Simple explicit marker approach: _is_skip is set at message creation time
+    in loop.py when assistant responds directly after tool results.
+
     Args:
         messages: List of message dicts to segment
-        prev_role: Optional role of the message BEFORE this chunk (e.g., 'tool')
-                   Used for skip detection when messages start fresh after archiving.
 
     Returns:
         List of (start_idx, end_idx, segment_type) tuples.
         - 'conv': conversation block (user + assistant without tool_calls)
         - 'tool': tool call block (assistant with tool_calls + tool results)
-        - 'skip': assistant content AFTER tool result (keep in RAM, don't summarize)
+        - 'skip': assistant content AFTER tool result (marked with _is_skip)
     """
     if not messages:
         return []
-
-    # DEBUG: Log message roles for debugging
-    logger.debug(
-        "segment_messages: {} messages - roles: {}",
-        len(messages),
-        [
-            f"{m.get('role', '?')}:{(m.get('tool_calls') and 'tool') or m.get('content', '')[:30]}"
-            for m in messages[:10]
-        ],
-    )
 
     segments: list[tuple[int, int, str]] = []
     i = 0
@@ -208,78 +198,47 @@ def segment_messages(
     while i < len(messages):
         role = messages[i].get("role", "")
         tool_calls = messages[i].get("tool_calls", [])
+        is_skip = messages[i].get("_is_skip", False)
 
         if role == "assistant" and tool_calls:
             # Tool call block: assistant with tool_calls + all following tool results
             start = i
-            # Find the end: either next assistant OR end of messages
             j = i + 1
             while j < len(messages):
                 next_role = messages[j].get("role", "")
                 if next_role != "tool":
                     break
                 j += 1
-            # Mark as tool block (includes tool results)
             segments.append((start, j, "tool"))
             i = j
+        elif role == "assistant" and is_skip:
+            # Explicit skip marker - assistant responds to tool results
+            segments.append((i, i + 1, "skip"))
+            i += 1
         elif role == "assistant" and not tool_calls:
-            # Check if this assistant comes AFTER any tool result
-            # Also check prev_role parameter for archived context
-            is_after_tool = False
-
-            # First check prev_role parameter (from archived context)
-            if prev_role == "tool":
-                is_after_tool = True
-            else:
-                # Look backwards through ALL messages in current chunk
-                for j in range(i - 1, -1, -1):
-                    if j < 0:
-                        break
-                    prev_role_loop = messages[j].get("role", "")
-                    if prev_role_loop == "tool":
-                        is_after_tool = True
-                        break
-                    elif prev_role_loop == "user":
-                        break  # Stop at user - not a skip context
-
-            if is_after_tool:
-                # Skip block - assistant after tool, keep content in RAM
-                segments.append((i, i + 1, "skip"))
-                i += 1
-            else:
-                # Normal assistant without tool_calls - part of conversation
-                # Stop at: assistant WITH tool_calls, tool results, OR assistant AFTER tool (skip)
-                start = i
-                j = i + 1
-                while j < len(messages):
-                    next_role = messages[j].get("role", "")
-                    next_tool_calls = messages[j].get("tool_calls", [])
-                    # Stop at assistant making new tool_calls (not at skip response)
-                    if next_role == "assistant" and next_tool_calls:
-                        break
-                    # Also stop at tool results and skip assistants
-                    if next_role == "tool" or (
-                        next_role == "assistant" and not next_tool_calls
-                    ):
-                        break
-                    j += 1
-                segments.append((start, j, "conv"))
-                i = j
-        elif role == "user":
-            # Conversation block starts with user
-            # Stop at: assistant WITH tool_calls, tool results, OR assistant AFTER tool (skip)
-            # This prevents tool/skip messages from being included in conv blocks
+            # Normal assistant - part of conversation until next message boundary
             start = i
             j = i + 1
             while j < len(messages):
                 next_role = messages[j].get("role", "")
                 next_tool_calls = messages[j].get("tool_calls", [])
-                # Stop at assistant making new tool_calls (not at skip response)
-                if next_role == "assistant" and next_tool_calls:
-                    break
-                # Also stop at tool results and skip assistants
+                # Stop at tool or assistant with tool_calls
                 if next_role == "tool" or (
-                    next_role == "assistant" and not next_tool_calls
+                    next_role == "assistant" and next_tool_calls
+                ):
+                    break
+                j += 1
+            segments.append((start, j, "conv"))
+            i = j
+        elif role == "user":
+            # Conversation block starts with user
+            start = i
+            j = i + 1
+            while j < len(messages):
+                next_role = messages[j].get("role", "")
+                next_tool_calls = messages[j].get("tool_calls", [])
+                if next_role == "tool" or (
+                    next_role == "assistant" and next_tool_calls
                 ):
                     break
                 j += 1
@@ -802,81 +761,42 @@ class MemoryConsolidator:
         Each segment is summarized with appropriate markers.
         - 'conv': conversation summary with [conv:] marker
         - 'tool': tool call summary with [tool:] marker
-        - 'skip': not returned (kept in RAM)
+        - 'skip': assistant after tool, NOT archived (kept in RAM)
         """
         start_idx = session.last_archived
         if start_idx >= len(session.messages) or tokens_to_remove <= 0:
             return []
 
-        # Check messages from last_archived position - if already have _archived_as, use that type
-        # This prevents re-segmenting already-archived messages incorrectly
-        fixed_segments: list[tuple[int, int, str]] = []
-        i = start_idx
-        while i < len(session.messages):
-            msg = session.messages[i]
-            archived_type = msg.get("_archived_as")
-            
-            if archived_type:
-                # This message was already processed - use its type
-                end = i + 1
-                # Find end of this contiguous block
-                while end < len(session.messages) and session.messages[end].get("_archived_as") == archived_type:
-                    end += 1
-                fixed_segments.append((i, end, archived_type))
-                i = end
-            else:
-                # Not processed yet - will be segmented normally
-                break
+        # Get unprocessed messages
+        unarchived = session.messages[start_idx:]
+        if not unarchived:
+            return []
 
-        # If we have pre-processed messages, add them as a boundary
-        if fixed_segments:
-            first_end = fixed_segments[0][1]  # where unarchived starts in session.messages
-            unarchived = session.messages[first_end:]
-        else:
-            first_end = start_idx
-            unarchived = session.messages[start_idx:]
+        # Segment messages - uses _is_skip marker set at message creation
+        segments = segment_messages(unarchived)
 
-        # Get prev_role from session metadata (stored by archive_session)
-        # This tells us what message type ended the archived portion
-        prev_role: str | None = session.metadata.get("last_archived_role")
-
-        # Segment only the unprocessed messages, passing prev_role for skip detection
-        if unarchived:
-            segments = segment_messages(unarchived, prev_role=prev_role)
-        else:
-            segments = []
-
-        # Combine: pre-processed + new segments (apply start_idx offset to new segments)
-        combined = fixed_segments.copy()
-        for seg_start, seg_end, seg_type in segments:
-            combined.append((seg_start + first_end, seg_end + first_end, seg_type))
-
-        # Calculate token counts for each segment and find valid boundaries
+        # Calculate token counts and build boundaries
         boundaries: list[tuple[int, int, str]] = []
         accumulated_tokens = 0
-        boundary_end = start_idx  # cumulative end position for boundaries
+        boundary_end = start_idx
 
-        for seg_start, seg_end, seg_type in combined:
-            # Skip tokens for segments marked as 'skip'
+        for seg_start, seg_end, seg_type in segments:
             seg_tokens = 0
             for i in range(seg_start, seg_end):
-                if i < len(session.messages):
-                    msg = session.messages[i]
-                    # Update marker but don't double-count skip messages
+                if start_idx + i < len(session.messages):
+                    msg = session.messages[start_idx + i]
+                    # Don't count skip messages for archival
                     if seg_type != "skip":
-                        msg["_archived_as"] = seg_type
                         seg_tokens += estimate_message_tokens(msg)
 
             accumulated_tokens += seg_tokens
             actual_start = boundary_end
-            actual_end = seg_end
+            actual_end = start_idx + seg_end
 
             if accumulated_tokens >= tokens_to_remove:
-                # Found enough to remove - add this segment as final boundary
                 boundaries.append((actual_start, actual_end, seg_type))
                 break
             else:
-                # Keep accumulating - record boundary at segment end
                 boundaries.append((actual_start, actual_end, seg_type))
                 boundary_end = actual_end
 
