@@ -271,6 +271,100 @@ def segment_messages(
     return segments
 
 
+def _archive_tool_blocks(
+    self,
+    session: Session,
+    estimated: int,
+) -> None:
+    """Step 1: Archive only tool blocks (soft clip).
+
+    Archives tool call messages and their results at context_headroom% threshold.
+    Conversation messages remain untouched.
+    """
+    from speckbot.agent.context import estimate_message_tokens
+
+    # Find tool blocks in messages
+    tool_messages = []
+    for i, msg in enumerate(session.messages):
+        role = msg.get("role", "")
+        tool_calls = msg.get("tool_calls", [])
+        is_skip = msg.get("_is_skip", False)
+
+        if role == "assistant" and tool_calls:
+            tool_messages.append(i)
+        elif role == "tool":
+            tool_messages.append(i)
+
+    if not tool_messages:
+        return
+
+    # Build boundaries for tool blocks only
+    tool_start = tool_messages[0]
+    tool_end = tool_messages[-1] + 1
+    boundaries = [(tool_start, tool_end, "tool")]
+
+    # Process boundaries to archive
+    from .context import MessageSummaryExtractor, SummaryConfig
+
+    summaries_to_append: list[str] = []
+    for start_idx, end_idx, seg_type in boundaries:
+        chunk = session.messages[start_idx:end_idx]
+        if not chunk:
+            continue
+
+        extractor = MessageSummaryExtractor(SummaryConfig())
+        summary = extractor.extract(chunk)
+        if summary:
+            marker = f"[{seg_type.upper()}:] "
+            summary_lines = summary.split("\n")
+            summary_lines[0] = marker + summary_lines[0]
+            for line in summary_lines:
+                if line.strip():
+                    summaries_to_append.append(line)
+
+        session.last_archived = end_idx
+
+    # Append summaries
+    for summary in summaries_to_append:
+        session.append_summary(summary)
+
+    # Archive to JSONL
+    archived, archive_note = session.sessions.archive_session(session)
+    if archive_note:
+        session.append_summary(archive_note)
+
+    session.sessions.save(session)
+
+
+def _archive_all_with_hardclip(
+    self,
+    session: Session,
+    estimated: int,
+) -> None:
+    """Step 2: Archive ALL messages + hard clip as last resort.
+
+    Archives conversation (tools already gone from Step 1) and hard clips
+    any remaining excess beyond active_window_tokens + 5%.
+    """
+    from speckbot.agent.context import estimate_message_tokens
+
+    # Archive all remaining messages (tool blocks already archived in Step 1)
+    session.last_archived = len(session.messages)
+    archived, archive_note = session.sessions.archive_session(session)
+    if archive_note:
+        session.append_summary(archive_note)
+
+    # Hard clip to get under active_window_tokens + 5%
+    target_tokens = int(self.active_window_tokens * 1.05)
+    while (
+        session.messages
+        and sum(estimate_message_tokens(m) for m in session.messages) > target_tokens
+    ):
+        session.messages.pop(0)
+
+    session.sessions.save(session)
+
+
 # Tool for consolidation (internal LLM call) - just save_memory
 _CONSOLIDATION_TOOL = [
     {
@@ -870,8 +964,38 @@ class MemoryConsolidator:
                         self.context_headroom,
                     )
 
-            # If still under active_window_tokens, no archiving needed
-            if estimated < self.active_window_tokens:
+            # Calculate thresholds
+            # Step 1: context_headroom% - triggers archiving of tool blocks only
+            step1_threshold = int(self.active_window_tokens * (100 - self.context_headroom) / 100)
+            # Step 2: active_window_tokens + 5% - true last resort with lazy overage
+            step2_threshold = int(self.active_window_tokens * 1.05)
+
+            # Step 1: Soft clip tool blocks only (triggers at context_headroom%)
+            if estimated > step1_threshold:
+                logger.debug(
+                    "Conveyor belt Step1 {}: {}/{} (tool blocks at {}%)",
+                    session.key,
+                    estimated,
+                    step1_threshold,
+                    100 - self.context_headroom,
+                )
+                # Only archive tool blocks - use segment_messages to identify
+                self._archive_tool_blocks(session, estimated)
+
+            # Step 2: Archive ALL + hard clip as last resort (triggers at active + 5%)
+            elif estimated > step2_threshold:
+                logger.debug(
+                    "Conveyor belt Step2 {}: {}/{} (last resort at {}%)",
+                    session.key,
+                    estimated,
+                    step2_threshold,
+                    105,
+                )
+                # Archive everything remaining + hard clip
+                self._archive_all_with_hardclip(session, estimated)
+
+            # If under both thresholds, no archiving needed
+            else:
                 logger.debug(
                     "Conveyor belt idle {}: {}/{} ({}% headroom)",
                     session.key,
@@ -880,6 +1004,8 @@ class MemoryConsolidator:
                     self.context_headroom,
                 )
                 return
+
+            return  # Exit after Step 1 or Step 2 processed
 
             # Archive messages until under threshold
             for round_num in range(self._max_rounds):
