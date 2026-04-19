@@ -168,6 +168,10 @@ class Session:
 
         out: list[dict[str, Any]] = []
         for message in all_msgs:
+            # Filter out skip messages - bot shouldn't see answers that follow tool calls
+            if message.get("_is_skip"):
+                continue
+
             entry: dict[str, Any] = {"role": message["role"], "content": message.get("content", "")}
             for key in ("tool_calls", "tool_call_id", "name"):
                 if key in message:

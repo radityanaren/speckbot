@@ -919,8 +919,13 @@ class MemoryConsolidator:
                         self.active_window_tokens,
                     )
 
-                    # SKIP segments: DON'T extract any summary at all - just archive
+                    # SKIP segments: Append RAW content AFTER markers (no extraction, no marker)
                     if seg_type == "skip":
+                        for msg in chunk:
+                            raw_content = msg.get("content", "")
+                            if raw_content:
+                                # Each line ends with newline for vertical expansion
+                                summaries_to_append.append(raw_content + "\n")
                         session.last_archived = end_idx
                         continue
 
