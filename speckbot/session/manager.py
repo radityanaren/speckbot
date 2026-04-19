@@ -322,11 +322,11 @@ class SessionManager:
                     elif data_type == "summary":
                         # Each summary line is separate entry
                         summary_lines.append(data.get("content", ""))
+                    elif data_type == "message":
+                        messages.append(data)
                     elif data.get("role"):
                         # Has role = message (old format)
                         data.pop("_archived_as", None)
-                        messages.append(data)
-                    elif data_type == "message":
                         messages.append(data)
                     else:
                         # Legacy format - treat as message
