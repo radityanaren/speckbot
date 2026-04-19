@@ -31,7 +31,7 @@ class Session:
     last_archived: int = 0  # Number of messages already archived
     summary_lines: list[str] = field(default_factory=list)  # Summary as list of lines
     _max_summary_lines: int = (
-        40  # Max lines before recursive compression (increased for segmented summaries)
+        99999  # Disabled compression - each turn block stays separate for readability
     )
 
     def add_message(self, role: str, content: str, **kwargs: Any) -> None:
@@ -75,6 +75,9 @@ class Session:
         for line in lines:
             # Skip archive markers for compression
             if "[N messages archived" in line:
+                continue
+            # Skip block markers - each turn block stays separate
+            if "[CONV:]" in line or "[TOOL:]" in line:
                 continue
 
             # Extract role and key content
