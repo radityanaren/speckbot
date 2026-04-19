@@ -924,7 +924,12 @@ class MemoryConsolidator:
                         self.active_window_tokens,
                     )
 
-                    # Extract summary - messages already marked in pick_consolidation_boundary
+                    # SKIP segments: DON'T extract any summary at all - just archive
+                    if seg_type == "skip":
+                        session.last_archived = end_idx
+                        continue
+
+                    # Only extract summary for conv and tool segments
                     summary = self.summary_extractor.extract(chunk)
                     if summary:
                         marker = f"[{seg_type.upper()}:] "
