@@ -368,6 +368,10 @@ class SessionManager:
 
         msg_count = len(to_archive)
 
+        # Store last message role in metadata for skip detection on reload
+        last_archived_msg = to_archive[-1]
+        session.metadata["last_archived_role"] = last_archived_msg.get("role")
+
         # Create archive file path
         archive_file = self.archive_dir / f"{safe_filename(session.key)}.jsonl"
 

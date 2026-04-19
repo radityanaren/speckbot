@@ -174,11 +174,14 @@ class MessageSummaryExtractor:
 
 def segment_messages(
     messages: list[dict[str, Any]],
+    prev_role: str | None = None,
 ) -> list[tuple[int, int, str]]:
     """Segment messages into conv/tool/skip blocks for segmented summarization.
 
     Args:
         messages: List of message dicts to segment
+        prev_role: Optional role of the message BEFORE this chunk (e.g., 'tool')
+                   Used for skip detection when messages start fresh after archiving.
 
     Returns:
         List of (start_idx, end_idx, segment_type) tuples.
@@ -220,18 +223,24 @@ def segment_messages(
             segments.append((start, j, "tool"))
             i = j
         elif role == "assistant" and not tool_calls:
-            # Check if this assistant comes AFTER any tool result (not just immediate previous)
-            # Look backwards through ALL messages until we hit a user message
+            # Check if this assistant comes AFTER any tool result
+            # Also check prev_role parameter for archived context
             is_after_tool = False
-            for j in range(i - 1, -1, -1):
-                if j < 0:
-                    break
-                prev_role = messages[j].get("role", "")
-                if prev_role == "tool":
-                    is_after_tool = True
-                    break
-                elif prev_role == "user":
-                    break  # Stop at user - not a skip context
+
+            # First check prev_role parameter (from archived context)
+            if prev_role == "tool":
+                is_after_tool = True
+            else:
+                # Look backwards through ALL messages in current chunk
+                for j in range(i - 1, -1, -1):
+                    if j < 0:
+                        break
+                    prev_role_loop = messages[j].get("role", "")
+                    if prev_role_loop == "tool":
+                        is_after_tool = True
+                        break
+                    elif prev_role_loop == "user":
+                        break  # Stop at user - not a skip context
 
             if is_after_tool:
                 # Skip block - assistant after tool, keep content in RAM
@@ -827,9 +836,13 @@ class MemoryConsolidator:
             first_end = start_idx
             unarchived = session.messages[start_idx:]
 
-        # Segment only the unprocessed messages
+        # Get prev_role from session metadata (stored by archive_session)
+        # This tells us what message type ended the archived portion
+        prev_role: str | None = session.metadata.get("last_archived_role")
+
+        # Segment only the unprocessed messages, passing prev_role for skip detection
         if unarchived:
-            segments = segment_messages(unarchived)
+            segments = segment_messages(unarchived, prev_role=prev_role)
         else:
             segments = []
 
