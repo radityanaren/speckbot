@@ -239,27 +239,39 @@ def segment_messages(
                 i += 1
             else:
                 # Normal assistant without tool_calls - part of conversation
-                # Continue ANY content until we hit user or assistant with tool_calls
+                # Stop at: assistant WITH tool_calls, tool results, OR assistant AFTER tool (skip)
                 start = i
                 j = i + 1
                 while j < len(messages):
                     next_role = messages[j].get("role", "")
                     next_tool_calls = messages[j].get("tool_calls", [])
-                    # Continue conv until we hit assistant WITH tool_calls
+                    # Stop at assistant making new tool_calls (not at skip response)
                     if next_role == "assistant" and next_tool_calls:
+                        break
+                    # Also stop at tool results and skip assistants
+                    if next_role == "tool" or (
+                        next_role == "assistant" and not next_tool_calls
+                    ):
                         break
                     j += 1
                 segments.append((start, j, "conv"))
                 i = j
         elif role == "user":
             # Conversation block starts with user
-            # Continue ANY content until we hit assistant WITH tool_calls
+            # Stop at: assistant WITH tool_calls, tool results, OR assistant AFTER tool (skip)
+            # This prevents tool/skip messages from being included in conv blocks
             start = i
             j = i + 1
             while j < len(messages):
                 next_role = messages[j].get("role", "")
                 next_tool_calls = messages[j].get("tool_calls", [])
+                # Stop at assistant making new tool_calls (not at skip response)
                 if next_role == "assistant" and next_tool_calls:
+                    break
+                # Also stop at tool results and skip assistants
+                if next_role == "tool" or (
+                    next_role == "assistant" and not next_tool_calls
+                ):
                     break
                 j += 1
             segments.append((start, j, "conv"))
