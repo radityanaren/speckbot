@@ -277,7 +277,7 @@ def _archive_tool_blocks(session: Session, sessions) -> None:
     Archives tool call messages and their results at context_headroom% threshold.
     Conversation messages remain untouched.
     """
-    from speckbot.agent.context import estimate_message_tokens
+    from speckbot.utils.helpers import estimate_message_tokens
 
     # Find tool blocks in messages
     tool_messages = []
@@ -338,7 +338,7 @@ def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -
     Archives conversation (tools already gone from Step 1) and hard clips
     any remaining excess beyond active_window_tokens + 5%.
     """
-    from speckbot.agent.context import estimate_message_tokens
+    from speckbot.utils.helpers import estimate_message_tokens
 
     # Archive all remaining messages (tool blocks already archived in Step 1)
     session.last_archived = len(session.messages)
