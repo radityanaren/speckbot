@@ -924,8 +924,8 @@ class MemoryConsolidator:
                         for msg in chunk:
                             raw_content = msg.get("content", "")
                             if raw_content:
-                                # Each line ends with newline for vertical expansion
-                                summaries_to_append.append(raw_content + "\n")
+                                # Extra newline BEFORE for vertical separation
+                                summaries_to_append.append("\n" + raw_content + "\n")
                         session.last_archived = end_idx
                         continue
 
