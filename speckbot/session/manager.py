@@ -49,9 +49,9 @@ class Session:
         new_lines = new_summary.strip().split("\n")
         self.summary_lines.extend(new_lines)
 
-        # Recursive compression: if too many lines, compress oldest into one
-        while len(self.summary_lines) > self._max_summary_lines:
-            self._compress_oldest_lines()
+        # DISABLED: Recursive compression - each turn block stays separate for readability
+        # while len(self.summary_lines) > self._max_summary_lines:
+        #     self._compress_oldest_lines()
 
         self.updated_at = datetime.now()
 
