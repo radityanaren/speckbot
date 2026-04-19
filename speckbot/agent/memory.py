@@ -63,6 +63,10 @@ class MessageSummaryExtractor:
         lines: list[str] = []
 
         for msg in messages:
+            # Skip messages that were archived as "skip" - they stay in RAM, not summarized
+            if msg.get("_archived_as") == "skip":
+                continue
+
             role = msg.get("role", "")
             timestamp = self._extract_timestamp(msg)
             summary_line = self._summarize_message(msg, role, timestamp)
@@ -909,12 +913,11 @@ class MemoryConsolidator:
                         self.active_window_tokens,
                     )
 
-                    # SKIP: archive to JSONL but DON'T add to summary_lines
-                    if seg_type == "skip":
-                        session.last_archived = end_idx
-                        continue  # Skip adding to summary, but will be archived below
+                    # Mark each message with its archive type (for tracking across rounds)
+                    for msg in chunk:
+                        msg["_archived_as"] = seg_type
 
-                    # CONV/TOOL: extract summary with marker
+                    # Extract summary - summary_extractor will skip messages with _archived_as: skip
                     summary = self.summary_extractor.extract(chunk)
                     if summary:
                         marker = f"[{seg_type.upper()}:] "
