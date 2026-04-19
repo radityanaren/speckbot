@@ -924,10 +924,15 @@ class MemoryConsolidator:
                         for msg in chunk:
                             raw_content = msg.get("content", "")
                             if raw_content:
-                                # Split by newlines - each line becomes SEPARATE array element
-                                for line in raw_content.split("\n"):
-                                    if line.strip():
-                                        summaries_to_append.append(line)
+                                # Split by paragraphs (\n\n) - groups related lines together
+                                paragraphs = raw_content.split("\n\n")
+                                for para in paragraphs:
+                                    para = para.strip()
+                                    if para:
+                                        # Each paragraph might have single newlines - keep those
+                                        for line in para.split("\n"):
+                                            if line.strip():
+                                                summaries_to_append.append(line)
                         session.last_archived = end_idx
                         continue
 
