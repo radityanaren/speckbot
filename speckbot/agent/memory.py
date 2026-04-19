@@ -271,11 +271,7 @@ def segment_messages(
     return segments
 
 
-def _archive_tool_blocks(
-    self,
-    session: Session,
-    estimated: int,
-) -> None:
+def _archive_tool_blocks(session: Session, sessions) -> None:
     """Step 1: Archive only tool blocks (soft clip).
 
     Archives tool call messages and their results at context_headroom% threshold.
@@ -304,7 +300,7 @@ def _archive_tool_blocks(
     boundaries = [(tool_start, tool_end, "tool")]
 
     # Process boundaries to archive
-    from .context import MessageSummaryExtractor, SummaryConfig
+    from speckbot.agent.context import MessageSummaryExtractor, SummaryConfig
 
     summaries_to_append: list[str] = []
     for start_idx, end_idx, seg_type in boundaries:
@@ -329,18 +325,14 @@ def _archive_tool_blocks(
         session.append_summary(summary)
 
     # Archive to JSONL
-    archived, archive_note = session.sessions.archive_session(session)
+    archived, archive_note = sessions.archive_session(session)
     if archive_note:
         session.append_summary(archive_note)
 
-    session.sessions.save(session)
+    sessions.save(session)
 
 
-def _archive_all_with_hardclip(
-    self,
-    session: Session,
-    estimated: int,
-) -> None:
+def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -> None:
     """Step 2: Archive ALL messages + hard clip as last resort.
 
     Archives conversation (tools already gone from Step 1) and hard clips
@@ -350,19 +342,19 @@ def _archive_all_with_hardclip(
 
     # Archive all remaining messages (tool blocks already archived in Step 1)
     session.last_archived = len(session.messages)
-    archived, archive_note = session.sessions.archive_session(session)
+    archived, archive_note = sessions.archive_session(session)
     if archive_note:
         session.append_summary(archive_note)
 
     # Hard clip to get under active_window_tokens + 5%
-    target_tokens = int(self.active_window_tokens * 1.05)
+    target_tokens = int(active_tokens * 1.05)
     while (
         session.messages
         and sum(estimate_message_tokens(m) for m in session.messages) > target_tokens
     ):
         session.messages.pop(0)
 
-    session.sessions.save(session)
+    sessions.save(session)
 
 
 # Tool for consolidation (internal LLM call) - just save_memory
@@ -980,7 +972,19 @@ class MemoryConsolidator:
                     100 - self.context_headroom,
                 )
                 # Only archive tool blocks - use segment_messages to identify
-                self._archive_tool_blocks(session, estimated)
+                _archive_tool_blocks(session, self.sessions)
+
+                # Re-estimate AFTER Step 1 to avoid false judgment on large tool calls
+                new_estimated, _ = self.estimate_session_prompt_tokens(session)
+                if new_estimated <= step2_threshold:
+                    # Tool blocks removed, now under Step 2 threshold - no more archiving needed
+                    logger.debug(
+                        "Conveyor belt Step1 complete {}: {}/{} (under step2)",
+                        session.key,
+                        new_estimated,
+                        step2_threshold,
+                    )
+                    return
 
             # Step 2: Archive ALL + hard clip as last resort (triggers at active + 5%)
             elif estimated > step2_threshold:
@@ -992,7 +996,7 @@ class MemoryConsolidator:
                     105,
                 )
                 # Archive everything remaining + hard clip
-                self._archive_all_with_hardclip(session, estimated)
+                _archive_all_with_hardclip(session, self.sessions, self.active_window_tokens)
 
             # If under both thresholds, no archiving needed
             else:
