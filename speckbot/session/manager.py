@@ -297,6 +297,7 @@ class SessionManager:
 
         try:
             messages = []
+            summary_lines = []
             metadata = {}
             created_at = None
             last_archived = 0
@@ -308,8 +309,9 @@ class SessionManager:
                         continue
 
                     data = json.loads(line)
+                    data_type = data.get("_type")
 
-                    if data.get("_type") == "metadata":
+                    if data_type == "metadata":
                         metadata = data.get("metadata", {})
                         created_at = (
                             datetime.fromisoformat(data["created_at"])
@@ -317,8 +319,17 @@ class SessionManager:
                             else None
                         )
                         last_archived = data.get("last_archived", 0)
+                    elif data_type == "summary":
+                        # Each summary line is separate entry
+                        summary_lines.append(data.get("content", ""))
+                    elif data.get("role"):
+                        # Has role = message (old format)
+                        data.pop("_archived_as", None)
+                        messages.append(data)
+                    elif data_type == "message":
+                        messages.append(data)
                     else:
-                        # Clear _archived_as on load to allow fresh segmentation
+                        # Legacy format - treat as message
                         data.pop("_archived_as", None)
                         messages.append(data)
 
@@ -328,14 +339,18 @@ class SessionManager:
                 created_at=created_at or datetime.now(),
                 metadata=metadata,
                 last_archived=last_archived,
-                summary_lines=data.get("summary_lines", []),
+                summary_lines=summary_lines,
             )
         except Exception as e:
             logger.warning("Failed to load session {}: {}", key, e)
             return None
 
     def save(self, session: Session) -> None:
-        """Save a session to disk."""
+        """Save a session to disk.
+
+        Each summary line is saved as a separate JSON line (like messages).
+        This ensures each visual line is a separate array element in JSON.
+        """
         path = self._get_session_path(session.key)
 
         with open(path, "w", encoding="utf-8") as f:
@@ -346,9 +361,15 @@ class SessionManager:
                 "updated_at": session.updated_at.isoformat(),
                 "metadata": session.metadata,
                 "last_archived": session.last_archived,
-                "summary_lines": session.summary_lines,
+                "summary_lines_count": len(session.summary_lines),  # Store count for verification
             }
             f.write(json.dumps(metadata_line, ensure_ascii=False) + "\n")
+
+            # Save each summary line as SEPARATE JSON line (like messages)
+            for line in session.summary_lines:
+                f.write(json.dumps({"_type": "summary", "content": line}, ensure_ascii=False) + "\n")
+
+            # Save messages
             for msg in session.messages:
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
