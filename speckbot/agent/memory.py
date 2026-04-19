@@ -274,29 +274,39 @@ def segment_messages(
 def _archive_tool_blocks(session: Session, sessions) -> None:
     """Step 1: Archive only tool blocks (soft clip).
 
-    Archives tool call messages and their results at context_headroom% threshold.
+    Archives the MOST RECENT tool block and its results at context_headroom% threshold.
     Conversation messages remain untouched.
     """
     from speckbot.utils.helpers import estimate_message_tokens
 
-    # Find tool blocks in messages
-    tool_messages = []
+    # Find the MOST RECENT tool block (assistant with tool_calls + its tool results)
+    last_tool_idx = -1
+    first_tool_idx = -1
+
     for i, msg in enumerate(session.messages):
         role = msg.get("role", "")
         tool_calls = msg.get("tool_calls", [])
-        is_skip = msg.get("_is_skip", False)
 
         if role == "assistant" and tool_calls:
-            tool_messages.append(i)
-        elif role == "tool":
-            tool_messages.append(i)
+            # Found assistant with tool_calls - this is the start of a tool block
+            last_tool_idx = i
+            if first_tool_idx == -1:
+                first_tool_idx = i
 
-    if not tool_messages:
+    # Also find tool results that follow
+    if first_tool_idx > -1:
+        for i in range(first_tool_idx + 1, len(session.messages)):
+            if session.messages[i].get("role") == "tool":
+                last_tool_idx = i
+            else:
+                break
+
+    if first_tool_idx == -1:
         return
 
-    # Build boundaries for tool blocks only
-    tool_start = tool_messages[0]
-    tool_end = tool_messages[-1] + 1
+    # Archive only the most recent tool block
+    tool_start = first_tool_idx
+    tool_end = last_tool_idx + 1
     boundaries = [(tool_start, tool_end, "tool")]
 
     # Process boundaries to archive
