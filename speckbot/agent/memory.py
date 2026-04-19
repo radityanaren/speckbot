@@ -785,11 +785,6 @@ class MemoryConsolidator:
         boundary_end = start_idx  # cumulative end position for boundaries
 
         for seg_start, seg_end, seg_type in segments:
-            if seg_type == "skip":
-                # Don't archive skip segments - update marker
-                boundary_end = start_idx + seg_end
-                continue
-
             # Calculate tokens for this segment
             seg_tokens = 0
             for i in range(seg_start, seg_end):
@@ -914,10 +909,10 @@ class MemoryConsolidator:
                         self.active_window_tokens,
                     )
 
-                    # SKIP: don't summarize, just mark as processed
+                    # SKIP: archive to JSONL but DON'T add to summary_lines
                     if seg_type == "skip":
                         session.last_archived = end_idx
-                        continue
+                        continue  # Skip adding to summary, but will be archived below
 
                     # CONV/TOOL: extract summary with marker
                     summary = self.summary_extractor.extract(chunk)
