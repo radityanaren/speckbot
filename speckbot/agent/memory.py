@@ -272,41 +272,36 @@ def segment_messages(
 
 
 def _archive_tool_blocks(session: Session, sessions) -> None:
-    """Step 1: Archive only tool blocks (soft clip).
+    """Step 1: Archive ONLY tool messages.
 
-    Archives the MOST RECENT tool block and its results at context_headroom% threshold.
-    Conversation messages remain untouched.
+    Archives ONLY:
+    - assistant with tool_calls (the one making the call)
+    - tool results (role = "tool")
+    
+    Does NOT archive:
+    - user messages
+    - assistant responses (including _is_skip)
     """
-    from speckbot.utils.helpers import estimate_message_tokens
-
-    # Find the MOST RECENT tool block (assistant with tool_calls + its tool results)
-    last_tool_idx = -1
-    first_tool_idx = -1
-
+    # Find ONLY tool message indices (assistant with tool_calls OR role="tool")
+    tool_indices = []
     for i, msg in enumerate(session.messages):
         role = msg.get("role", "")
         tool_calls = msg.get("tool_calls", [])
-
+        
         if role == "assistant" and tool_calls:
-            # Found assistant with tool_calls - this is the start of a tool block
-            last_tool_idx = i
-            if first_tool_idx == -1:
-                first_tool_idx = i
-
-    # Also find tool results that follow
-    if first_tool_idx > -1:
-        for i in range(first_tool_idx + 1, len(session.messages)):
-            if session.messages[i].get("role") == "tool":
-                last_tool_idx = i
-            else:
-                break
-
-    if first_tool_idx == -1:
-        return
-
-    # Archive only the most recent tool block
-    tool_start = first_tool_idx
-    tool_end = last_tool_idx + 1
+            tool_indices.append(i)
+        elif role == "tool":
+            tool_indices.append(i)
+    
+    if not tool_indices:
+        return  # No tool messages to archive
+    
+    # Archive from first tool to last tool (consecutive block)
+    tool_start = min(tool_indices)
+    tool_end = max(tool_indices) + 1
+    
+    # Process only tool messages for summary
+    tool_chunk = session.messages[tool_start:tool_end]
     boundaries = [(tool_start, tool_end, "tool")]
 
     # Process boundaries to archive
