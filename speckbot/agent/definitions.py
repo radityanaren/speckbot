@@ -8,6 +8,7 @@ import from here instead of duplicating command strings.
 _COMMANDS = {
     "stop": "Stop the current task",
     "restart": "Restart SpeckBot",
+    "flush": "Compact oldest 90% via LLM",
     "memories": "Show saved memories",
     "help": "Show available commands",
 }
