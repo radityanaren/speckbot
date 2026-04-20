@@ -379,6 +379,10 @@ class SessionManager:
         """
         Archive old messages to JSONL file for a session.
 
+        Supports two approaches:
+        1. last_archived index (old approach) - archives from beginning to index
+        2. _archived_as markers (new approach) - archives all messages with marker
+
         Messages are REMOVED from session.messages after archiving to JSONL.
         JSONL is the source of truth for archived messages.
 
@@ -388,8 +392,22 @@ class SessionManager:
         Returns:
             Tuple of (archived messages, archive note for summary)
         """
-        # Archive messages from beginning up to last_archived index
-        to_archive = session.messages[: session.last_archived]
+        # Find messages with _archived_as markers (new approach)
+        archived_indices = []
+        for i, msg in enumerate(session.messages):
+            if msg.get("_archived_as"):
+                archived_indices.append(i)
+
+        if archived_indices:
+            # Use the highest index + 1 as boundary (archive all marked messages)
+            boundary = max(archived_indices) + 1
+            to_archive = session.messages[:boundary]
+        elif session.last_archived > 0:
+            # Fall back to last_archived (old approach)
+            to_archive = session.messages[: session.last_archived]
+        else:
+            # Nothing to archive
+            return [], ""
 
         if not to_archive:
             return [], ""
@@ -409,7 +427,12 @@ class SessionManager:
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
         # REMOVE messages from session.messages (not just mark) - shallow copy keeps dict refs
-        remaining = session.messages[session.last_archived :]
+        if archived_indices:
+            # New approach - remove up to boundary
+            remaining = session.messages[boundary:]
+        else:
+            # Old approach
+            remaining = session.messages[session.last_archived :]
         # Clear _archived_as markers from remaining messages for next round
         for msg in remaining:
             msg.pop("_archived_as", None)

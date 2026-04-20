@@ -271,11 +271,13 @@ def segment_messages(
     return segments
 
 
-def _archive_tool_blocks(session: Session, sessions) -> None:
+def _archive_tool_blocks(session: Session, sessions) -> bool:
     """Step 1: Archive ONLY MOST RECENT assistant with tool_calls (NOT tool results).
 
-    Archives ONLY the MOST RECENT tool call block(s) - not all of them.
+    Archives ONLY the MOST RECENT tool call block - not all of them.
     This preserves conversation and tool results in session longer.
+
+    Returns True if archiving happened, False otherwise.
 
     Archives ONLY:
     - assistant with tool_calls (the one making the call)
@@ -285,7 +287,10 @@ def _archive_tool_blocks(session: Session, sessions) -> None:
     - user messages
     - assistant responses (including _is_skip)
     """
-    # Find ONLY assistant with tool_calls (NOT tool results)
+    import json
+    from pathlib import Path
+
+    # Find ONLY assistant with tool_calls that haven't been archived
     tool_call_indices = []
     for i, msg in enumerate(session.messages):
         role = msg.get("role", "")
@@ -295,16 +300,15 @@ def _archive_tool_blocks(session: Session, sessions) -> None:
             tool_call_indices.append(i)
 
     if not tool_call_indices:
-        return  # No tool calls to archive
+        return False  # No tool calls to archive
 
-    # Archive ONLY the MOST RECENT tool call block (closest to the end)
-    # This ensures conversation and older tool results stay in session longer
+    # Archive ONLY the MOST RECENT tool call (closest to the end)
     idx = tool_call_indices[-1]  # Last one = most recent
-    tool_chunk = [session.messages[idx]]
+    tool_call_msg = session.messages[idx]
 
-    # Summarize and archive single message
+    # Summarize and add summary lines
     extractor = MessageSummaryExtractor(SummaryConfig())
-    summary = extractor.extract(tool_chunk)
+    summary = extractor.extract([tool_call_msg])
     if summary:
         marker = "[TOOL:] "
         summary_lines = summary.split("\n")
@@ -313,15 +317,24 @@ def _archive_tool_blocks(session: Session, sessions) -> None:
             if line.strip():
                 session.append_summary(line)
 
-    # Mark for archival but DON'T remove - tool results stay in session
-    session.messages[idx]["_archived_as"] = "tool"
+    # Write tool call to JSONL archive
+    from speckbot.utils.helpers import safe_filename
+    archive_file = sessions.archive_dir / f"{safe_filename(session.key)}.jsonl"
+    with open(archive_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(tool_call_msg, ensure_ascii=False) + "\n")
 
-    # Archive marked messages to JSONL
-    archived, archive_note = sessions.archive_session(session)
-    if archive_note:
-        session.append_summary(archive_note)
+    # REMOVE the tool call message from session (not just mark!)
+    # This frees up tokens - the summary line remains
+    session.messages.pop(idx)
 
+    # Track in session metadata
+    session.metadata["last_archived_role"] = "assistant"
+
+    # Save session
     sessions.save(session)
+
+    logger.info("Archived and removed tool call from session")
+    return True
 
 
 def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -> None:
@@ -947,19 +960,29 @@ class MemoryConsolidator:
                     )
 
             # Calculate thresholds
-            # Step 1: context_headroom% - triggers archiving of tool blocks only
+            # Step 1: triggers at (active_window_tokens - context_headroom%)
+            # e.g., context_headroom=20 means Step 1 triggers at 80% of active_window_tokens
             step1_threshold = int(self.active_window_tokens * (100 - self.context_headroom) / 100)
             # Step 2: active_window_tokens + 5% - true last resort with lazy overage
             step2_threshold = int(self.active_window_tokens * 1.05)
 
+            # Log current state for debugging
+            logger.debug(
+                "Conveyor belt check {}: estimated={}, thresholds: step1={} ({}%), step2={} (105%)",
+                session.key,
+                estimated,
+                step1_threshold,
+                100 - self.context_headroom,
+                step2_threshold,
+            )
+
             # Step 1: Soft clip tool blocks only (triggers at context_headroom%)
             if estimated > step1_threshold:
-                logger.debug(
-                    "Conveyor belt Step1 {}: {}/{} (tool blocks at {}%)",
+                logger.info(
+                    "Conveyor belt Step1 {}: {}/{} (tool blocks)",
                     session.key,
                     estimated,
                     step1_threshold,
-                    100 - self.context_headroom,
                 )
                 # Only archive tool call messages
                 _archive_tool_blocks(session, self.sessions)
