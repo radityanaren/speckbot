@@ -272,25 +272,21 @@ def segment_messages(
 
 
 def _archive_tool_blocks(session: Session, sessions) -> bool:
-    """Step 1: Archive ONLY MOST RECENT assistant with tool_calls (NOT tool results).
+    """Step 1: Archive MOST RECENT tool call + its result.
 
-    Archives ONLY the MOST RECENT tool call block - not all of them.
-    This preserves conversation and tool results in session longer.
+    Archives the MOST RECENT tool call block (assistant with tool_calls + following tool results).
+    This preserves conversation in session longer.
 
     Returns True if archiving happened, False otherwise.
 
-    Archives ONLY:
-    - assistant with tool_calls (the one making the call)
-
     Does NOT archive:
-    - tool results (they contain useful info!)
     - user messages
     - assistant responses (including _is_skip)
     """
     import json
     from pathlib import Path
 
-    # Find ONLY assistant with tool_calls that haven't been archived
+    # Find assistant with tool_calls that haven't been archived
     tool_call_indices = []
     for i, msg in enumerate(session.messages):
         role = msg.get("role", "")
@@ -302,13 +298,22 @@ def _archive_tool_blocks(session: Session, sessions) -> bool:
     if not tool_call_indices:
         return False  # No tool calls to archive
 
-    # Archive ONLY the MOST RECENT tool call (closest to the end)
+    # Get the MOST RECENT tool call block
     idx = tool_call_indices[-1]  # Last one = most recent
     tool_call_msg = session.messages[idx]
 
-    # Summarize and add summary lines
+    # Find all tool results that follow this tool call
+    block_indices = [idx]  # Include the assistant message
+    for j in range(idx + 1, len(session.messages)):
+        if session.messages[j].get("role") == "tool":
+            block_indices.append(j)
+        else:
+            break  # Stop at next non-tool message
+
+    # Summarize the tool block (call + result)
     extractor = MessageSummaryExtractor(SummaryConfig())
-    summary = extractor.extract([tool_call_msg])
+    block_messages = [session.messages[i] for i in block_indices]
+    summary = extractor.extract(block_messages)
     if summary:
         marker = "[TOOL:] "
         summary_lines = summary.split("\n")
@@ -317,15 +322,16 @@ def _archive_tool_blocks(session: Session, sessions) -> bool:
             if line.strip():
                 session.append_summary(line)
 
-    # Write tool call to JSONL archive
+    # Write tool block to JSONL archive
     from speckbot.utils.helpers import safe_filename
     archive_file = sessions.archive_dir / f"{safe_filename(session.key)}.jsonl"
     with open(archive_file, "a", encoding="utf-8") as f:
-        f.write(json.dumps(tool_call_msg, ensure_ascii=False) + "\n")
+        for msg in block_messages:
+            f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
-    # REMOVE the tool call message from session (not just mark!)
-    # This frees up tokens - the summary line remains
-    session.messages.pop(idx)
+    # REMOVE the tool block from session (all at once, reverse order to preserve indices)
+    for i in reversed(block_indices):
+        session.messages.pop(i)
 
     # Track in session metadata
     session.metadata["last_archived_role"] = "assistant"
@@ -333,7 +339,7 @@ def _archive_tool_blocks(session: Session, sessions) -> bool:
     # Save session
     sessions.save(session)
 
-    logger.info("Archived and removed tool call from session")
+    logger.info("Archived tool block ({} messages) from session", len(block_indices))
     return True
 
 
