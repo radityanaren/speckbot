@@ -286,23 +286,24 @@ def _archive_tool_blocks(session: Session, sessions) -> bool:
     import json
     from pathlib import Path
 
-    # Find assistant with tool_calls that haven't been archived
-    tool_call_indices = []
+    # Find ALL assistant with tool_calls (NOT just unarchived ones)
+    all_tool_call_indices = []
     for i, msg in enumerate(session.messages):
         role = msg.get("role", "")
         tool_calls = msg.get("tool_calls", [])
 
-        if role == "assistant" and tool_calls and msg.get("_archived_as") != "tool":
-            tool_call_indices.append(i)
+        if role == "assistant" and tool_calls:
+            all_tool_call_indices.append(i)
 
-    if not tool_call_indices:
+    if not all_tool_call_indices:
         return False  # No tool calls to archive
 
-    # Get the MOST RECENT tool call block
-    idx = tool_call_indices[-1]  # Last one = most recent
+    # Get the MOST RECENT tool call block (last one)
+    idx = all_tool_call_indices[-1]
     tool_call_msg = session.messages[idx]
+    tool_call_tokens = estimate_message_tokens(tool_call_msg)
 
-    # Find all tool results that follow this tool call
+    # Find ALL tool results that follow this tool call (should capture ALL of them!)
     block_indices = [idx]  # Include the assistant message
     for j in range(idx + 1, len(session.messages)):
         if session.messages[j].get("role") == "tool":
@@ -310,9 +311,26 @@ def _archive_tool_blocks(session: Session, sessions) -> bool:
         else:
             break  # Stop at next non-tool message
 
+    # Get actual messages in block (with full content!)
+    block_messages = [session.messages[i] for i in block_indices]
+    total_tokens = sum(estimate_message_tokens(msg) for msg in block_messages)
+
+    # Debug log what's being archived
+    for bi, msg in zip(block_indices, block_messages):
+        role = msg.get("role", "unknown")
+        content_len = len(msg.get("content", "")) if isinstance(msg.get("content"), str) else 0
+        content_preview = str(msg.get("content", ""))[:50]
+        msg_tokens = estimate_message_tokens(msg)
+        logger.debug("  [{}] role={}, content_len={}, tokens={}", bi, role, content_len, msg_tokens)
+
+    logger.info(
+        "Step1: archiving {} messages (total {} tokens) from session",
+        len(block_indices),
+        total_tokens,
+    )
+
     # Summarize the tool block (call + result)
     extractor = MessageSummaryExtractor(SummaryConfig())
-    block_messages = [session.messages[i] for i in block_indices]
     summary = extractor.extract(block_messages)
     if summary:
         marker = "[TOOL:] "
@@ -339,31 +357,81 @@ def _archive_tool_blocks(session: Session, sessions) -> bool:
     # Save session
     sessions.save(session)
 
-    logger.info("Archived tool block ({} messages) from session", len(block_indices))
+    logger.info("Archived tool block ({} messages, {} tokens removed)", len(block_indices), total_tokens)
     return True
 
 
 def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -> None:
-    """Step 2: Archive ALL messages + hard clip as last resort.
+    """Step 2: Archive oldest messages ONE BY ONE until under threshold.
 
-    Archives conversation (tools already gone from Step 1) and hard clips
-    any remaining excess beyond active_window_tokens + 5%.
+    Archives conversation messages (tools already gone from Step 1) and hard clips
+    any remaining excess one message at a time from oldest, re-estimating each time.
+
+    This is the LAST RESORT - should only be reached if Step1 didn't free enough space.
     """
-    # Archive all remaining messages (tool blocks already archived in Step 1)
-    session.last_archived = len(session.messages)
-    archived, archive_note = sessions.archive_session(session)
-    if archive_note:
-        session.append_summary(archive_note)
+    import json
+    from pathlib import Path
 
-    # Hard clip to get under active_window_tokens + 5%
+    # Target: active_window_tokens + 5% (lazy overage allowed)
     target_tokens = int(active_tokens * 1.05)
-    while (
-        session.messages
-        and sum(estimate_message_tokens(m) for m in session.messages) > target_tokens
-    ):
-        session.messages.pop(0)
 
+    archived_count = 0
+    total_archived_tokens = 0
+
+    # Archive ONE message at a time from oldest, until under threshold
+    while session.messages:
+        current_tokens = sum(estimate_message_tokens(m) for m in session.messages)
+        if current_tokens <= target_tokens:
+            break  # Under threshold, stop
+
+        # Get oldest message
+        oldest = session.messages[0]
+        oldest_role = oldest.get("role", "unknown")
+        oldest_tokens = estimate_message_tokens(oldest)
+
+        # Summarize oldest message
+        extractor = MessageSummaryExtractor(SummaryConfig())
+        if oldest_role == "user":
+            summary = extractor.extract([oldest])
+            marker = "[CONV:] "
+        elif oldest_role == "assistant":
+            summary = extractor.extract([oldest])
+            marker = "[CONV:] "
+        elif oldest_role == "tool":
+            summary = extractor.extract([oldest])
+            marker = "[TOOL:] "
+        else:
+            summary = ""
+            marker = ""
+
+        # Write to archive
+        from speckbot.utils.helpers import safe_filename
+        archive_file = sessions.archive_dir / f"{safe_filename(session.key)}.jsonl"
+        with open(archive_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(oldest, ensure_ascii=False) + "\n")
+
+        # Add to summary (if summarizable)
+        if summary:
+            summary_lines = summary.split("\n")
+            summary_lines[0] = marker + summary_lines[0]
+            for line in summary_lines:
+                if line.strip():
+                    session.append_summary(line)
+
+        # Remove from session
+        session.messages.pop(0)
+        archived_count += 1
+        total_archived_tokens += oldest_tokens
+
+    # Save session after loop
     sessions.save(session)
+
+    logger.info(
+        "Step2: archived {} oldest messages, {} tokens (target: {} tokens)",
+        archived_count,
+        total_archived_tokens,
+        target_tokens,
+    )
 
 
 # Tool for consolidation (internal LLM call) - just save_memory
