@@ -556,16 +556,12 @@ class AgentLoop:
 
         # Step 5: Run LLM consolidate on oldest messages
         llm_summary = ""
-        if oldest_messages and hasattr(self, '_agent') and self._agent:
+        if oldest_messages and hasattr(self, 'memory_consolidator') and self.provider and self.model:
             try:
-                from speckbot.agent.memory import MemoryConsolidator
-                mc = self._agent.memory_consolidator
+                mc = self.memory_consolidator
                 # Run consolidation on oldest messages
-                success = await mc.consolidate(oldest_messages, self._agent.provider, self._agent.model)
+                success = await mc.consolidate(oldest_messages, self.provider, self.model)
                 if success:
-                    # Get the history entry that was saved
-                    # The consolidate method writes to history, we need to read it back
-                    # For simplicity, we'll add a note that consolidation ran
                     llm_summary = "[LLM consolidated memory saved]"
             except Exception as e:
                 logger.warning("Flush LLM consolidation failed: {}", e)
