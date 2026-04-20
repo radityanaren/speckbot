@@ -281,6 +281,7 @@ class TelegramChannel(BaseChannel):
         # Add command handlers - all forward to bus for centralized handling
         self._app.add_handler(CommandHandler("stop", self._forward_command))
         self._app.add_handler(CommandHandler("restart", self._forward_command))
+        self._app.add_handler(CommandHandler("flush", self._forward_command))
         self._app.add_handler(CommandHandler("memories", self._forward_command))
         self._app.add_handler(CommandHandler("help", self._forward_command))
 
