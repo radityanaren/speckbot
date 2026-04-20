@@ -272,11 +272,14 @@ def segment_messages(
 
 
 def _archive_tool_blocks(session: Session, sessions) -> None:
-    """Step 1: Archive ONLY assistant with tool_calls (NOT tool results).
+    """Step 1: Archive ONLY MOST RECENT assistant with tool_calls (NOT tool results).
+
+    Archives ONLY the MOST RECENT tool call block(s) - not all of them.
+    This preserves conversation and tool results in session longer.
 
     Archives ONLY:
     - assistant with tool_calls (the one making the call)
-    
+
     Does NOT archive:
     - tool results (they contain useful info!)
     - user messages
@@ -287,30 +290,31 @@ def _archive_tool_blocks(session: Session, sessions) -> None:
     for i, msg in enumerate(session.messages):
         role = msg.get("role", "")
         tool_calls = msg.get("tool_calls", [])
-        
-        if role == "assistant" and tool_calls:
+
+        if role == "assistant" and tool_calls and msg.get("_archived_as") != "tool":
             tool_call_indices.append(i)
-    
+
     if not tool_call_indices:
         return  # No tool calls to archive
-    
-    # Archive ONLY assistant with tool_calls messages
-    for idx in tool_call_indices:
-        tool_chunk = [session.messages[idx]]
-        
-        # Summarize and archive single message
-        extractor = MessageSummaryExtractor(SummaryConfig())
-        summary = extractor.extract(tool_chunk)
-        if summary:
-            marker = "[TOOL:] "
-            summary_lines = summary.split("\n")
-            summary_lines[0] = marker + summary_lines[0]
-            for line in summary_lines:
-                if line.strip():
-                    session.append_summary(line)
-        
-        # Mark for archival but DON'T remove - tool results stay in session
-        session.messages[idx]["_archived_as"] = "tool"
+
+    # Archive ONLY the MOST RECENT tool call block (closest to the end)
+    # This ensures conversation and older tool results stay in session longer
+    idx = tool_call_indices[-1]  # Last one = most recent
+    tool_chunk = [session.messages[idx]]
+
+    # Summarize and archive single message
+    extractor = MessageSummaryExtractor(SummaryConfig())
+    summary = extractor.extract(tool_chunk)
+    if summary:
+        marker = "[TOOL:] "
+        summary_lines = summary.split("\n")
+        summary_lines[0] = marker + summary_lines[0]
+        for line in summary_lines:
+            if line.strip():
+                session.append_summary(line)
+
+    # Mark for archival but DON'T remove - tool results stay in session
+    session.messages[idx]["_archived_as"] = "tool"
 
     # Archive marked messages to JSONL
     archived, archive_note = sessions.archive_session(session)
@@ -326,8 +330,6 @@ def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -
     Archives conversation (tools already gone from Step 1) and hard clips
     any remaining excess beyond active_window_tokens + 5%.
     """
-    from speckbot.utils.helpers import estimate_message_tokens
-
     # Archive all remaining messages (tool blocks already archived in Step 1)
     session.last_archived = len(session.messages)
     archived, archive_note = sessions.archive_session(session)
@@ -959,23 +961,14 @@ class MemoryConsolidator:
                     step1_threshold,
                     100 - self.context_headroom,
                 )
-                # Only archive tool blocks - use segment_messages to identify
+                # Only archive tool call messages
                 _archive_tool_blocks(session, self.sessions)
 
-                # Re-estimate AFTER Step 1 to avoid false judgment on large tool calls
-                new_estimated, _ = self.estimate_session_prompt_tokens(session)
-                if new_estimated <= step2_threshold:
-                    # Tool blocks removed, now under Step 2 threshold - no more archiving needed
-                    logger.debug(
-                        "Conveyor belt Step1 complete {}: {}/{} (under step2)",
-                        session.key,
-                        new_estimated,
-                        step2_threshold,
-                    )
-                    return
+            # Re-estimate AFTER Step 1 - use NEW count for Step 2 check
+            estimated, _ = self.estimate_session_prompt_tokens(session)
 
-            # Step 2: Archive ALL + hard clip as last resort (triggers at active + 5%)
-            elif estimated > step2_threshold:
+            # Step 2: Check with UPDATED estimated value (after Step 1 processed)
+            if estimated > step2_threshold:
                 logger.debug(
                     "Conveyor belt Step2 {}: {}/{} (last resort at {}%)",
                     session.key,
@@ -985,92 +978,4 @@ class MemoryConsolidator:
                 )
                 # Archive everything remaining + hard clip
                 _archive_all_with_hardclip(session, self.sessions, self.active_window_tokens)
-
-            # If under both thresholds, no archiving needed
-            else:
-                logger.debug(
-                    "Conveyor belt idle {}: {}/{} ({}% headroom)",
-                    session.key,
-                    estimated,
-                    self.active_window_tokens,
-                    self.context_headroom,
-                )
-                return
-
-            return  # Exit after Step 1 or Step 2 processed
-
-            # Archive messages until under threshold
-            for round_num in range(self._max_rounds):
-                if estimated <= self.active_window_tokens:
-                    return
-
-                # Find boundaries using segmented approach
-                boundaries = self.pick_consolidation_boundary(
-                    session, max(1, estimated - self.active_window_tokens)
-                )
-                if not boundaries:
-                    logger.debug(
-                        "Conveyor belt: no safe boundary for {} (round {})",
-                        session.key,
-                        round_num,
-                    )
-                    return
-
-                # Collect summaries FIRST, then append at BOTTOM
-                summaries_to_append: list[str] = []
-
-                for start_idx, end_idx, seg_type in boundaries:
-                    if end_idx <= session.last_archived:
-                        continue
-
-                    chunk = session.messages[session.last_archived : end_idx]
-                    if not chunk:
-                        continue
-
-                    logger.info(
-                        "Conveyor belt round {} for {}: archiving {} msgs ({}), {}/{}",
-                        round_num,
-                        session.key,
-                        len(chunk),
-                        seg_type,
-                        estimated,
-                        self.active_window_tokens,
-                    )
-
-                    # SKIP segments: Append RAW content AFTER markers (no extraction, no marker)
-                    if seg_type == "skip":
-                        for msg in chunk:
-                            raw_content = msg.get("content", "")
-                            if raw_content:
-                                # Keep full answer as ONE element - don't split at all
-                                summaries_to_append.append(raw_content.strip())
-                        session.last_archived = end_idx
-                        continue
-
-                    # Only extract summary for conv and tool segments
-                    summary = self.summary_extractor.extract(chunk)
-                    if summary:
-                        marker = f"[{seg_type.upper()}:] "
-                        summary_lines = summary.split("\n")
-                        summary_lines[0] = marker + summary_lines[0]
-                        # Split by newlines - each line becomes SEPARATE array element
-                        for line in summary_lines:
-                            if line.strip():
-                                summaries_to_append.append(line)
-
-                    session.last_archived = end_idx
-
-                # NOW append all summaries at BOTTOM (in order)
-                for summary in summaries_to_append:
-                    session.append_summary(summary)
-
-                # Archive all marked messages to JSONL
-                archived, archive_note = self.sessions.archive_session(session)
-                if archive_note:
-                    session.append_summary(archive_note)
-
-                self.sessions.save(session)
-
-                estimated, source = self.estimate_session_prompt_tokens(session)
-                if estimated <= 0:
-                    return
+            # If under both thresholds, no archiving needed - done
