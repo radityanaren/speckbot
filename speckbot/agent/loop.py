@@ -530,7 +530,15 @@ class AgentLoop:
             return
 
         # Step 3: Calculate 90%/10% split
+        # Failsafe: Need at least 10 messages for meaningful flush
         total = len(timeline)
+        if total < 10:
+            content = f"Nothing to flush - only {total} messages (need 10+)."
+            await self.bus.publish_outbound(
+                OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=content)
+            )
+            return
+
         split_idx = int(total * 0.90)
 
         oldest_90 = timeline[:split_idx] if split_idx > 0 else []
@@ -554,15 +562,39 @@ class AgentLoop:
             for m in oldest_messages:
                 f.write(json.dumps(m, ensure_ascii=False) + "\n")
 
-        # Step 5: Run LLM consolidate on oldest messages
+        # Step 5: Run LLM consolidation on oldest messages
         llm_summary = ""
-        if oldest_messages and hasattr(self, 'memory_consolidator') and self.provider and self.model:
+        if oldest_messages and self.provider and self.model:
             try:
-                mc = self.memory_consolidator
-                # Run consolidation on oldest messages
-                success = await mc.consolidate(oldest_messages, self.provider, self.model)
-                if success:
-                    llm_summary = "[LLM consolidated memory saved]"
+                # Format messages as conversation for LLM
+                conversation_lines = []
+                for m in oldest_messages:
+                    role = m.get("role", "unknown")
+                    content = m.get("content", "")
+                    if isinstance(content, str) and content:
+                        # Truncate long content
+                        if len(content) > 500:
+                            content = content[:500] + "..."
+                        ts = m.get("timestamp", "")
+                        ts_str = ts.split("T")[1][:5] if "T" in ts else ts[:5]
+                        conversation_lines.append(f"[{ts_str}] {role}: {content}")
+
+                if conversation_lines:
+                    consolidation_prompt = (
+                        "Summarize this conversation history concisely, preserving key facts, "
+                        "decisions, and important context. Use a brief paragraph format.\n\n"
+                        + "\n".join(conversation_lines)
+                    )
+
+                    llm_response = await self.provider.chat_with_retry(
+                        messages=[{"role": "user", "content": consolidation_prompt}],
+                        tools=None,
+                        model=self.model,
+                    )
+
+                    if llm_response.content:
+                        llm_summary = f"[Memory: {llm_response.content.strip()}]"
+                        logger.info("Flush: LLM consolidation complete ({} chars)", len(llm_response.content))
             except Exception as e:
                 logger.warning("Flush LLM consolidation failed: {}", e)
                 llm_summary = "[LLM consolidation failed]"

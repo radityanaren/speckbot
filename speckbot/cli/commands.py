@@ -729,6 +729,8 @@ def gateway(
             config=timer_config,
             heartbeat_service=heartbeat,
             monologue_service=agent.monologue,
+            provider=agent.provider,
+            model=agent.model,
         )
 
         # Pass timer to agent so it can reset monologue counter on user messages

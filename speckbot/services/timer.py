@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from speckbot.services.heartbeat.service import HeartbeatService
     from speckbot.services.monologue.service import MonologueSystem
     from speckbot.services.dream.service import DreamEngine
+    from speckbot.providers.base import LLMProvider
 
 
 def _now_ms() -> int:
@@ -37,6 +38,8 @@ class UnifiedTimer:
         heartbeat_service: "HeartbeatService | None" = None,
         monologue_service: "MonologueSystem | None" = None,
         dream_service: "DreamEngine | None" = None,
+        provider: "LLMProvider | None" = None,
+        model: str | None = None,
     ):
         self.workspace = workspace
         self.config = config or {}
@@ -45,6 +48,10 @@ class UnifiedTimer:
         self._heartbeat = heartbeat_service
         self._monologue = monologue_service
         self._dream = dream_service
+
+        # LLM provider for Dream flush consolidation
+        self._provider = provider
+        self._model = model
 
         # Config - heartbeat (support both snake_case and camelCase)
         hb_config = config.get("heartbeat", {}) if config else {}
@@ -253,6 +260,7 @@ class UnifiedTimer:
 
                         # Archive oldest 90% to JSONL
                         oldest_messages = [item[2] for item in oldest_90 if item[1] == "message"]
+                        oldest_summaries = [item[2] for item in oldest_90 if item[1] == "summary"]
 
                         archive_file = archive_dir / f"{safe_filename(session_key)}.jsonl"
                         archive_file.parent.mkdir(parents=True, exist_ok=True)
@@ -261,9 +269,53 @@ class UnifiedTimer:
                             for m in oldest_messages:
                                 f.write(json.dumps(m, ensure_ascii=False) + "\n")
 
-                        # Rebuild session: keep newest 10% messages only
+                        # LLM consolidation (if provider available and enough messages)
+                        llm_summary = ""
+                        if self._provider and self._model and len(oldest_messages) >= 5:
+                            try:
+                                # Format messages for LLM
+                                conversation_lines = []
+                                for m in oldest_messages:
+                                    role = m.get("role", "unknown")
+                                    content = m.get("content", "")
+                                    if isinstance(content, str) and content:
+                                        if len(content) > 500:
+                                            content = content[:500] + "..."
+                                        ts = m.get("timestamp", "")
+                                        ts_str = ts.split("T")[1][:5] if "T" in ts else ts[:5]
+                                        conversation_lines.append(f"[{ts_str}] {role}: {content}")
+
+                                if conversation_lines:
+                                    consolidation_prompt = (
+                                        "Summarize this conversation history concisely, preserving key facts, "
+                                        "decisions, and important context. Use a brief paragraph format.\n\n"
+                                        + "\n".join(conversation_lines)
+                                    )
+
+                                    llm_response = await self._provider.chat_with_retry(
+                                        messages=[{"role": "user", "content": consolidation_prompt}],
+                                        tools=None,
+                                        model=self._model,
+                                    )
+
+                                    if llm_response.content:
+                                        llm_summary = f"[Memory: {llm_response.content.strip()}]"
+                                        logger.info("Dream flush: LLM consolidation complete for {}", session_key)
+                            except Exception as e:
+                                logger.warning("Dream flush LLM consolidation failed: {}", e)
+
+                        # Rebuild session: keep newest 10% messages + summaries + LLM summary
                         session.messages = [item[2] for item in newest_10 if item[1] == "message"]
-                        session.summary_lines = [item[2] for item in newest_10 if item[1] == "summary"]
+                        session.summary_lines = []
+
+                        # Add LLM summary if available
+                        if llm_summary:
+                            session.summary_lines.append(llm_summary)
+
+                        # Add summaries from newest 10
+                        for item in newest_10:
+                            if item[1] == "summary":
+                                session.summary_lines.append(item[2])
 
                         sm.save(session)
 
