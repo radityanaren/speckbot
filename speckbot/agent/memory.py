@@ -27,6 +27,120 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
+# Shared Consolidation Helpers (extracted to avoid duplication)
+# =============================================================================
+
+
+async def consolidate_oldest_messages(
+    session,
+    provider: "LLMProvider",
+    model: str,
+    sessions,
+    archive_dir: Path,
+) -> str:
+    """Consolidate oldest 90% of session messages via LLM.
+
+    Returns the LLM summary string, or empty string if consolidation fails.
+
+    This is shared between /flush command (loop.py) and Dream (timer.py).
+    """
+    # Lazy import to avoid circular dependency
+    from speckbot.utils.helpers import safe_filename
+    # Build timeline from messages + summary_lines
+    timeline = []
+
+    for m in session.messages:
+        ts = m.get("timestamp", "")
+        if "T" in ts:
+            ts = ts.split("T")[1][:5]
+        elif not ts:
+            ts = "00:00"
+        timeline.append((ts, "message", m))
+
+    for line in session.summary_lines:
+        match = re.search(r"\[(\d{2}:\d{2})\]", line)
+        ts = match.group(1) if match else "00:00"
+        timeline.append((ts, "summary", line))
+
+    if not timeline:
+        return ""
+
+    timeline.sort(key=lambda x: x[0])
+
+    # 90%/10% split
+    total = len(timeline)
+    split_idx = int(total * 0.90)
+
+    oldest_90 = timeline[:split_idx] if split_idx > 0 else []
+    newest_10 = timeline[split_idx:] if split_idx < total else timeline
+
+    if not oldest_90:
+        return ""
+
+    # Get oldest messages for archiving and LLM
+    oldest_messages = [item[2] for item in oldest_90 if item[1] == "message"]
+
+    # Archive oldest 90% to JSONL
+    archive_file = archive_dir / f"{safe_filename(session.key)}.jsonl"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    with open(archive_file, "a", encoding="utf-8") as f:
+        for m in oldest_messages:
+            f.write(json.dumps(m, ensure_ascii=False) + "\n")
+
+    # LLM consolidation
+    llm_summary = ""
+    if oldest_messages and len(oldest_messages) >= 5:
+        try:
+            conversation_lines = []
+            for m in oldest_messages:
+                role = m.get("role", "unknown")
+                content = m.get("content", "")
+                if isinstance(content, str) and content:
+                    if len(content) > 500:
+                        content = content[:500] + "..."
+                    ts = m.get("timestamp", "")
+                    ts_str = ts.split("T")[1][:5] if "T" in ts else ts[:5]
+                    conversation_lines.append(f"[{ts_str}] {role}: {content}")
+
+            if conversation_lines:
+                consolidation_prompt = (
+                    "Summarize this conversation history concisely, preserving key facts, "
+                    "decisions, and important context. Use a brief paragraph format.\n\n"
+                    + "\n".join(conversation_lines)
+                )
+
+                llm_response = await provider.chat_with_retry(
+                    messages=[{"role": "user", "content": consolidation_prompt}],
+                    tools=None,
+                    model=model,
+                )
+
+                if llm_response.content:
+                    llm_summary = f"[Memory: {llm_response.content.strip()}]"
+                    logger.info("Consolidation: LLM complete ({} chars)", len(llm_response.content))
+        except Exception as e:
+            logger.warning("Consolidation LLM failed: {}", e)
+
+    # Rebuild session: keep newest 10%
+    session.messages = [item[2] for item in newest_10 if item[1] == "message"]
+    session.summary_lines = []
+    if llm_summary:
+        session.summary_lines.append(llm_summary)
+    for item in newest_10:
+        if item[1] == "summary":
+            session.summary_lines.append(item[2])
+
+    sessions.save(session)
+    logger.info("Consolidation: session {} compacted", session.key)
+
+    return llm_summary
+
+
+# =============================================================================
+# Context Summary for Conveyor Belt
+
+
+# =============================================================================
 # Context Summary for Conveyor Belt
 # =============================================================================
 
