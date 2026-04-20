@@ -189,10 +189,93 @@ class UnifiedTimer:
             self._monologue_counter = 0
 
     async def _trigger_restart(self) -> None:
-        """Trigger process restart."""
+        """Trigger process restart after running flush (for Dream)."""
         import os
+        from speckbot.session.manager import SessionManager
+        from speckbot.utils.helpers import safe_filename, estimate_message_tokens
+        import json
+        import re
 
-        logger.info("UnifiedTimer: restarting speckbot...")
+        # If Dream enabled, run flush first before restart
+        if self._dream_enabled and self._dream:
+            logger.info("Dream: running flush compaction before restart...")
+
+            # Create session manager to access sessions
+            sessions_dir = self.workspace / "sessions"
+            archive_dir = self.workspace / "archive"
+
+            if sessions_dir.exists():
+                # Get all session files
+                session_files = list(sessions_dir.glob("*.jsonl"))
+
+                for session_file in session_files:
+                    try:
+                        session_key = session_file.stem
+
+                        # Load session
+                        from speckbot.session.manager import SessionManager
+                        sm = SessionManager(self.workspace)
+                        session = sm.get_or_create(session_key)
+
+                        if not session.messages and not session.summary_lines:
+                            continue
+
+                        # Build timeline (same logic as /flush)
+                        timeline = []
+
+                        for m in session.messages:
+                            ts = m.get("timestamp", "")
+                            if "T" in ts:
+                                ts = ts.split("T")[1][:5]
+                            elif not ts:
+                                ts = "00:00"
+                            timeline.append((ts, "message", m))
+
+                        for line in session.summary_lines:
+                            match = re.search(r"\[(\d{2}:\d{2})\]", line)
+                            ts = match.group(1) if match else "00:00"
+                            timeline.append((ts, "summary", line))
+
+                        if not timeline:
+                            continue
+
+                        timeline.sort(key=lambda x: x[0])
+
+                        # 90%/10% split
+                        total = len(timeline)
+                        split_idx = int(total * 0.90)
+
+                        oldest_90 = timeline[:split_idx] if split_idx > 0 else []
+                        newest_10 = timeline[split_idx:] if split_idx < total else timeline
+
+                        if not oldest_90:
+                            continue
+
+                        # Archive oldest 90% to JSONL
+                        oldest_messages = [item[2] for item in oldest_90 if item[1] == "message"]
+
+                        archive_file = archive_dir / f"{safe_filename(session_key)}.jsonl"
+                        archive_file.parent.mkdir(parents=True, exist_ok=True)
+
+                        with open(archive_file, "a", encoding="utf-8") as f:
+                            for m in oldest_messages:
+                                f.write(json.dumps(m, ensure_ascii=False) + "\n")
+
+                        # Rebuild session: keep newest 10% messages only
+                        session.messages = [item[2] for item in newest_10 if item[1] == "message"]
+                        session.summary_lines = [item[2] for item in newest_10 if item[1] == "summary"]
+
+                        sm.save(session)
+
+                        logger.info("Dream flush: session {} compacted", session_key)
+
+                    except Exception as e:
+                        logger.warning("Dream flush failed for {}: {}", session_file, e)
+                        continue
+
+            logger.info("Dream: flush done, now restarting speckbot...")
+
+        # Then restart
         await asyncio.sleep(0.3)
         os.execv(sys.executable, [sys.executable, "-m", "speckbot", "gateway"])
 

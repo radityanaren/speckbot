@@ -33,13 +33,11 @@ if TYPE_CHECKING:
 
 @dataclass
 class SummaryConfig:
-    """Configuration for message summarization."""
+    """Configuration for message summarization (Step1 - tool blocks)."""
 
     enabled: bool = True
-    user_max_chars: int = 100
-    tool_max_chars: int = 80
-    result_max_chars: int = 100
-    assistant_max_chars: int = 150
+    result_max_chars: int = 100  # Tool result truncation
+    assistant_max_chars: int = 150  # Assistant (with tool_calls) truncation
 
 
 class MessageSummaryExtractor:

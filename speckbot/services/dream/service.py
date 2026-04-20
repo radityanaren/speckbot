@@ -1,7 +1,10 @@
-"""Dream memory cleanup system - part of SpeckBot's Sleep system."""
+"""Dream: Memory index builder for SpeckBot.
 
-import json
-from datetime import datetime, timedelta
+On startup, Dream scans knowledges/projects and rebuilds MEMORY.md index.
+The old compaction logic has moved to /flush and timer.py.
+"""
+
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,24 +20,12 @@ class MemoryMap:
         self.last_updated: dict[str, datetime] = {}
 
 
-class SessionInsight:
-    """Patterns extracted from session."""
-
-    def __init__(self):
-        self.corrections: list[str] = []
-        self.save_requests: list[str] = []
-        self.themes: list[str] = []
-
-
 class DreamEngine:
     """
-    Dream: Background memory cleanup system.
+    Dream: Memory index builder for SpeckBot.
 
-    Part of SpeckBot's Sleep system. Runs on every startup to:
-    1. Scan - Build map of current memory
-    2. Explore - Extract patterns from recent sessions
-    3. Consolidate - Dedupe, date-convert, trim
-    4. Stabilize - Write cleaned files
+    Runs on startup to rebuild MEMORY.md index from knowledges/projects.
+    The old compaction logic has moved to /flush command.
     """
 
     def __init__(self, workspace: Path, config: dict[str, Any] | None = None):
@@ -95,69 +86,6 @@ class DreamEngine:
 
         return memory
 
-    def explore(self, limit: int = 5) -> list[SessionInsight]:
-        """Phase 2: Extract patterns from recent sessions."""
-        insights = []
-
-        if not self.sessions_dir.exists():
-            return insights
-
-        try:
-            sessions = sorted(
-                self.sessions_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True
-            )[:limit]
-        except Exception:
-            return insights
-
-        for session_path in sessions:
-            insight = SessionInsight()
-
-            try:
-                with open(session_path, encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            data = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-
-                        if data.get("_type") == "metadata":
-                            continue
-
-                        content = data.get("content", "")
-                        if not content:
-                            continue
-
-                        lower_content = content.lower()
-                        if any(
-                            kw in lower_content for kw in ["no,", "wrong", "not that", "actually"]
-                        ):
-                            insight.corrections.append(content[:200])
-
-                        if "save" in lower_content:
-                            if any(
-                                kw in lower_content for kw in ["knowledge", "project", "memory"]
-                            ):
-                                insight.save_requests.append(content[:200])
-
-            except Exception as e:
-                logger.debug("Failed to explore session {}: {}", session_path, e)
-                continue
-
-            if insight.corrections or insight.save_requests:
-                insights.append(insight)
-
-        return insights
-
-    def consolidate(self, memory: MemoryMap, insights: list[SessionInsight]) -> dict[str, Any]:
-        """Phase 3: Dedupe, convert dates, trim."""
-        result = {
-            "content_similarities_merged": 0,
-        }
-        return result
-
     def stabilize(self, memory: MemoryMap) -> None:
         """Phase 4: Write cleaned files back."""
         self._write_memory_index(memory)
@@ -186,37 +114,23 @@ class DreamEngine:
                 lines.append(f"- [[projects:{topic}]]{date_str}: {files_str}")
             lines.append("")
 
-        if memory.history_entries:
-            lines.append("## Recent History")
-            for entry in memory.history_entries[-5:]:
-                first_line = entry.split("\n")[0][:80]
-                lines.append(f"- {first_line}...")
-            lines.append("")
-
         self.memory_file.write_text("\n".join(lines), encoding="utf-8")
 
     # === Main entry point ===
 
     async def run(self) -> dict[str, Any]:
-        """Run full Dream cycle. Returns stats."""
+        """Run Dream: scan and rebuild MEMORY.md index."""
         if not self.enabled:
             return {"skipped": "disabled"}
 
-        logger.info("Starting Dream cleanup...")
+        logger.info("Dream: scanning memory...")
 
         memory = self.scan()
-        insights = self.explore()
-        stats = self.consolidate(memory, insights)
         self.stabilize(memory)
 
-        logger.info(
-            "Dream complete: deduplicated={}, date_fixed={}, trimmed={}",
-            stats.get("deduplicated", 0),
-            stats.get("date_fixed", 0),
-            stats.get("trimmed", 0),
-        )
+        logger.info("Dream: MEMORY.md index updated")
 
-        return stats
+        return {"status": "memory_index_updated"}
 
 
 async def run_dream(workspace: Path, config: dict[str, Any] | None = None) -> dict[str, Any]:

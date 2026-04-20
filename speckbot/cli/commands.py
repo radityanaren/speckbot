@@ -558,8 +558,6 @@ def gateway(
         tool_result_max_chars=config.agents.defaults.tool_result_max_chars,
         summary_config={
             "enabled": config.agents.defaults.summary_enabled,
-            "user_max_chars": config.agents.defaults.summary_user_max_chars,
-            "tool_max_chars": config.agents.defaults.summary_tool_max_chars,
             "result_max_chars": config.agents.defaults.summary_result_max_chars,
             "assistant_max_chars": config.agents.defaults.summary_assistant_max_chars,
         },
