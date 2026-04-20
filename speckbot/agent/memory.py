@@ -361,11 +361,22 @@ def _archive_tool_blocks(session: Session, sessions) -> bool:
     return True
 
 
-def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -> None:
-    """Step 2: Archive oldest messages ONE BY ONE until under threshold.
+def _extract_timestamp_from_summary(line: str) -> str:
+    """Extract timestamp from summary line like '[TOOL:] [11:09] ...' or '[CONV:] [11:08] ...'."""
+    import re
 
-    Archives conversation messages (tools already gone from Step 1) and hard clips
-    any remaining excess one message at a time from oldest, re-estimating each time.
+    # Match patterns like [11:09] or [09:40] or [23:59]
+    match = re.search(r"\[(\d{2}:\d{2})\]", line)
+    if match:
+        return match.group(1)
+    return "00:00"  # Default
+
+
+def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -> None:
+    """Step 2: Clip OLDEST LINE regardless of source (summary OR message).
+
+    Clips from BOTH summary_lines AND messages, always removing the oldest
+    line based on timestamp. This ensures context stays fresh.
 
     This is the LAST RESORT - should only be reached if Step1 didn't free enough space.
     """
@@ -375,61 +386,69 @@ def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -
     # Target: active_window_tokens + 5% (lazy overage allowed)
     target_tokens = int(active_tokens * 1.05)
 
-    archived_count = 0
-    total_archived_tokens = 0
+    # Current tokens in messages
+    current_msg_tokens = sum(estimate_message_tokens(m) for m in session.messages)
+    if current_msg_tokens <= target_tokens:
+        return  # Already under threshold
 
-    # Archive ONE message at a time from oldest, until under threshold
-    while session.messages:
-        current_tokens = sum(estimate_message_tokens(m) for m in session.messages)
-        if current_tokens <= target_tokens:
-            break  # Under threshold, stop
+    # Build combined timeline: (timestamp, source, content)
+    timeline = []
 
-        # Get oldest message
-        oldest = session.messages[0]
-        oldest_role = oldest.get("role", "unknown")
-        oldest_tokens = estimate_message_tokens(oldest)
+    # Add messages with timestamps
+    for msg in session.messages:
+        ts = msg.get("timestamp", "")
+        if "T" in ts:
+            ts = ts.split("T")[1][:5]
+        elif not ts:
+            ts = "00:00"
+        timeline.append((ts, "message", msg))
 
-        # Summarize oldest message
-        extractor = MessageSummaryExtractor(SummaryConfig())
-        if oldest_role == "user":
-            summary = extractor.extract([oldest])
-            marker = "[CONV:] "
-        elif oldest_role == "assistant":
-            summary = extractor.extract([oldest])
-            marker = "[CONV:] "
-        elif oldest_role == "tool":
-            summary = extractor.extract([oldest])
-            marker = "[TOOL:] "
-        else:
-            summary = ""
-            marker = ""
+    # Add summary lines with timestamps
+    for line in session.summary_lines:
+        ts = _extract_timestamp_from_summary(line)
+        timeline.append((ts, "summary", line))
 
-        # Write to archive
-        from speckbot.utils.helpers import safe_filename
-        archive_file = sessions.archive_dir / f"{safe_filename(session.key)}.jsonl"
-        with open(archive_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(oldest, ensure_ascii=False) + "\n")
+    # Sort by timestamp (oldest first)
+    timeline.sort(key=lambda x: x[0])
 
-        # Add to summary (if summarizable)
-        if summary:
-            summary_lines = summary.split("\n")
-            summary_lines[0] = marker + summary_lines[0]
-            for line in summary_lines:
-                if line.strip():
-                    session.append_summary(line)
+    # Determine which items to remove (oldest first)
+    items_to_remove = []
+    tokens_to_remove = 0
 
-        # Remove from session
-        session.messages.pop(0)
-        archived_count += 1
-        total_archived_tokens += oldest_tokens
+    for ts, source, content in timeline:
+        if source == "message":
+            msg_tokens = estimate_message_tokens(content)
+            if current_msg_tokens - tokens_to_remove - msg_tokens < target_tokens:
+                break  # Stop before going under target
+            tokens_to_remove += msg_tokens
+        items_to_remove.append((ts, source, content))
 
-    # Save session after loop
+    if not items_to_remove:
+        return
+
+    # Write removed messages to JSONL archive
+    for ts, source, content in items_to_remove:
+        if source == "message":
+            from speckbot.utils.helpers import safe_filename
+            archive_file = sessions.archive_dir / f"{safe_filename(session.key)}.jsonl"
+            with open(archive_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(content, ensure_ascii=False) + "\n")
+
+    # Rebuild session.messages - keep items NOT in remove list
+    removed_contents = set(id(c) for _, _, c in items_to_remove)
+    session.messages = [m for m in session.messages if id(m) not in removed_contents]
+
+    # Rebuild session.summary_lines - keep items NOT in remove list
+    removed_summaries = set(c for _, source, c in items_to_remove if source == "summary")
+    session.summary_lines = [s for s in session.summary_lines if s not in removed_summaries]
+
+    # Save session
     sessions.save(session)
 
     logger.info(
-        "Step2: archived {} oldest messages, {} tokens (target: {} tokens)",
-        archived_count,
-        total_archived_tokens,
+        "Step2: clipped {} oldest lines, {} message tokens (target: {} tokens)",
+        len(items_to_remove),
+        tokens_to_remove,
         target_tokens,
     )
 
