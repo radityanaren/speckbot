@@ -372,11 +372,15 @@ def _extract_timestamp_from_summary(line: str) -> str:
     return "00:00"  # Default
 
 
-def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -> None:
+def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int, estimated: int) -> None:
     """Step 2: Clip OLDEST LINE regardless of source (summary OR message).
 
     Clips from BOTH summary_lines AND messages, always removing the oldest
     line based on timestamp. This ensures context stays fresh.
+
+    Args:
+        estimated: The FULL prompt token count (from maybe_archive_by_tokens) - MUST USE THIS
+                  to ensure we're measuring the same thing as the threshold check.
 
     This is the LAST RESORT - should only be reached if Step1 didn't free enough space.
     """
@@ -386,9 +390,10 @@ def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -
     # Target: active_window_tokens + 5% (lazy overage allowed)
     target_tokens = int(active_tokens * 1.05)
 
-    # Current tokens in messages
-    current_msg_tokens = sum(estimate_message_tokens(m) for m in session.messages)
-    if current_msg_tokens <= target_tokens:
+    # CRITICAL: Use the passed estimated value, NOT recalculated!
+    # This ensures we're using the same measurement as the threshold check
+    current_tokens = estimated
+    if current_tokens <= target_tokens:
         return  # Already under threshold
 
     # Build combined timeline: (timestamp, source, content)
@@ -412,17 +417,26 @@ def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -
     timeline.sort(key=lambda x: x[0])
 
     # Determine which items to remove (oldest first)
-    # ALWAYS clip until under target - remove from oldest until we're safely below threshold
+    # ALWAYS clip until we reach the target threshold
     items_to_remove = []
-    tokens_to_remove = 0
+    tokens_removed = 0
+
+    # Calculate actual message tokens before removing
+    actual_msg_tokens = sum(estimate_message_tokens(m) for m in session.messages)
 
     for ts, source, content in timeline:
         items_to_remove.append((ts, source, content))
         if source == "message":
-            tokens_to_remove += estimate_message_tokens(content)
-        # Check AFTER adding - we want to go UNDER target, not stop at target
-        if current_msg_tokens - tokens_to_remove <= target_tokens:
-            break  # Now we can stop - we're under target
+            msg_token_count = estimate_message_tokens(content)
+            tokens_removed += msg_token_count
+            # Check actual message tokens - this is what we're trying to reduce
+            actual_msg_tokens -= msg_token_count
+            # Stop when actual messages are under target (or close to it)
+            if actual_msg_tokens <= target_tokens:
+                break
+
+    if not items_to_remove:
+        return
 
     if not items_to_remove:
         return
@@ -449,7 +463,7 @@ def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -
     logger.info(
         "Step2: clipped {} oldest lines, {} message tokens (target: {} tokens)",
         len(items_to_remove),
-        tokens_to_remove,
+        tokens_removed,
         target_tokens,
     )
 
@@ -1094,5 +1108,6 @@ class MemoryConsolidator:
                     105,
                 )
                 # Archive everything remaining + hard clip
-                _archive_all_with_hardclip(session, self.sessions, self.active_window_tokens)
+                # CRITICAL: Pass estimated value so it uses the SAME measurement as threshold check
+                _archive_all_with_hardclip(session, self.sessions, self.active_window_tokens, estimated)
             # If under both thresholds, no archiving needed - done
