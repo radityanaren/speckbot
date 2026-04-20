@@ -272,65 +272,47 @@ def segment_messages(
 
 
 def _archive_tool_blocks(session: Session, sessions) -> None:
-    """Step 1: Archive ONLY tool messages.
+    """Step 1: Archive ONLY assistant with tool_calls (NOT tool results).
 
     Archives ONLY:
     - assistant with tool_calls (the one making the call)
-    - tool results (role = "tool")
     
     Does NOT archive:
+    - tool results (they contain useful info!)
     - user messages
     - assistant responses (including _is_skip)
     """
-    # Find ONLY tool message indices (assistant with tool_calls OR role="tool")
-    tool_indices = []
+    # Find ONLY assistant with tool_calls (NOT tool results)
+    tool_call_indices = []
     for i, msg in enumerate(session.messages):
         role = msg.get("role", "")
         tool_calls = msg.get("tool_calls", [])
         
         if role == "assistant" and tool_calls:
-            tool_indices.append(i)
-        elif role == "tool":
-            tool_indices.append(i)
+            tool_call_indices.append(i)
     
-    if not tool_indices:
-        return  # No tool messages to archive
+    if not tool_call_indices:
+        return  # No tool calls to archive
     
-    # Archive from first tool to last tool (consecutive block)
-    tool_start = min(tool_indices)
-    tool_end = max(tool_indices) + 1
-    
-    # Process only tool messages for summary
-    tool_chunk = session.messages[tool_start:tool_end]
-    boundaries = [(tool_start, tool_end, "tool")]
-
-    # Process boundaries to archive
-    # MessageSummaryExtractor is in this file, use class attributes
-    extractor = MessageSummaryExtractor(SummaryConfig())
-
-    summaries_to_append: list[str] = []
-    for start_idx, end_idx, seg_type in boundaries:
-        chunk = session.messages[start_idx:end_idx]
-        if not chunk:
-            continue
-
+    # Archive ONLY assistant with tool_calls messages
+    for idx in tool_call_indices:
+        tool_chunk = [session.messages[idx]]
+        
+        # Summarize and archive single message
         extractor = MessageSummaryExtractor(SummaryConfig())
-        summary = extractor.extract(chunk)
+        summary = extractor.extract(tool_chunk)
         if summary:
-            marker = f"[{seg_type.upper()}:] "
+            marker = "[TOOL:] "
             summary_lines = summary.split("\n")
             summary_lines[0] = marker + summary_lines[0]
             for line in summary_lines:
                 if line.strip():
-                    summaries_to_append.append(line)
+                    session.append_summary(line)
+        
+        # Mark for archival but DON'T remove - tool results stay in session
+        session.messages[idx]["_archived_as"] = "tool"
 
-        session.last_archived = end_idx
-
-    # Append summaries
-    for summary in summaries_to_append:
-        session.append_summary(summary)
-
-    # Archive to JSONL
+    # Archive marked messages to JSONL
     archived, archive_note = sessions.archive_session(session)
     if archive_note:
         session.append_summary(archive_note)
