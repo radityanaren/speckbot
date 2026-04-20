@@ -60,7 +60,7 @@ class AgentLoop:
         model: str | None = None,
         max_iterations: int = 40,
         active_window_tokens: int = 65_536,
-        context_headroom: int = 20,
+        tool_truncation_percent: int = 50,
         tool_result_max_chars: int = 10_000,
         summary_config: dict | None = None,
         web_search_config: WebSearchConfig | None = None,
@@ -85,7 +85,7 @@ class AgentLoop:
         self.model = model or provider.get_default_model()
         self.max_iterations = max_iterations
         self.active_window_tokens = active_window_tokens
-        self.context_headroom = context_headroom
+        self.tool_truncation_percent = tool_truncation_percent
         self.tool_result_max_chars = tool_result_max_chars
         self.web_search_config = web_search_config or WebSearchConfig()
         self.web_proxy = web_proxy
@@ -168,7 +168,7 @@ class AgentLoop:
             active_window_tokens=active_window_tokens,
             build_messages=self.context.build_messages,
             get_tool_definitions=self.tools.get_definitions,
-            context_headroom=context_headroom,
+            tool_truncation_percent=tool_truncation_percent,
             summary_config=mc_summary_config,
         )
         self._register_default_tools()

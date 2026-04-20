@@ -31,7 +31,7 @@ class AgentDefaults(Base):
     provider: str = "provider_a"  # Must reference a provider name from providers list
     max_output_tokens: int = DEFAULT_MAX_TOKENS_AGENT
     active_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS
-    context_headroom: int = 20  # Headroom percentage for conveyor belt safety buffer
+    tool_truncation_percent: int = 50  # Percentage of active_window_tokens at which Step1 triggers tool block archiving
     tool_result_max_chars: int = 10_000  # Max characters for tool result truncation
     # Summary config for context fidelity in conveyor belt
     summary_enabled: bool = True
@@ -102,7 +102,7 @@ class CustomProvider(Base):
         "custom"  # Provider type: "custom" (OpenAI-compatible), "litellm", or custom class name
     )
     api_key: str = ""
-    api_base: str | None = None
+    api_base: str = ""  # User must set this (e.g., https://openrouter.ai/api/v1)
     model: str = ""  # Default model for this provider
     extra_headers: dict[str, str] | None = None
 

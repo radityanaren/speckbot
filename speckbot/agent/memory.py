@@ -937,7 +937,7 @@ class MemoryConsolidator:
         active_window_tokens: int,
         build_messages: Callable[..., list[dict[str, Any]]],
         get_tool_definitions: Callable[[], list[dict[str, Any]]],
-        context_headroom: int = 20,
+        tool_truncation_percent: int = 50,
         summary_config: SummaryConfig | None = None,
     ):
         self.store = MemoryStore(workspace)
@@ -945,7 +945,7 @@ class MemoryConsolidator:
         self.model = model
         self.sessions = sessions
         self.active_window_tokens = active_window_tokens
-        self.context_headroom = context_headroom  # Headroom percentage for safety buffer
+        self.tool_truncation_percent = tool_truncation_percent  # Percentage at which Step1 triggers
         self.summary_config = summary_config or SummaryConfig()
         self.summary_extractor = MessageSummaryExtractor(self.summary_config)
         self._build_messages = build_messages
@@ -1060,17 +1060,14 @@ class MemoryConsolidator:
                 if estimated > self.active_window_tokens:
                     logger.warning(
                         "Conveyor belt: Initial context ({} tokens) exceeds active_window_tokens "
-                        "({} tokens, {}% headroom). Consider increasing active_window_tokens or "
-                        "reducing context_headroom. Processing will continue with degraded context.",
+                        "({} tokens). Consider increasing active_window_tokens.",
                         estimated,
                         self.active_window_tokens,
-                        self.context_headroom,
                     )
 
             # Calculate thresholds
-            # Step 1: triggers at (active_window_tokens - context_headroom%)
-            # e.g., context_headroom=20 means Step 1 triggers at 80% of active_window_tokens
-            step1_threshold = int(self.active_window_tokens * (100 - self.context_headroom) / 100)
+            # Step 1: triggers at tool_truncation_percent of active_window_tokens
+            step1_threshold = int(self.active_window_tokens * self.tool_truncation_percent / 100)
             # Step 2: active_window_tokens + 5% - true last resort with lazy overage
             step2_threshold = int(self.active_window_tokens * 1.05)
 
@@ -1080,11 +1077,11 @@ class MemoryConsolidator:
                 session.key,
                 estimated,
                 step1_threshold,
-                100 - self.context_headroom,
+                self.tool_truncation_percent,
                 step2_threshold,
             )
 
-            # Step 1: Soft clip tool blocks only (triggers at context_headroom%)
+            # Step 1: Soft clip tool blocks only (triggers at tool_truncation_percent%)
             if estimated > step1_threshold:
                 logger.info(
                     "Conveyor belt Step1 {}: {}/{} (tool blocks)",

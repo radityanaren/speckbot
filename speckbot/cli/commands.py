@@ -554,7 +554,7 @@ def gateway(
         model=config.get_model(),
         max_iterations=config.agents.defaults.max_tool_iterations,
         active_window_tokens=config.agents.defaults.active_window_tokens,
-        context_headroom=config.agents.defaults.context_headroom,
+        tool_truncation_percent=config.agents.defaults.tool_truncation_percent,
         tool_result_max_chars=config.agents.defaults.tool_result_max_chars,
         summary_config={
             "enabled": config.agents.defaults.summary_enabled,
