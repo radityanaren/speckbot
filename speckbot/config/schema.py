@@ -102,7 +102,7 @@ class CustomProvider(Base):
         "custom"  # Provider type: "custom" (OpenAI-compatible), "litellm", or custom class name
     )
     api_key: str = ""
-    api_base: str = ""  # User must set this (e.g., https://openrouter.ai/api/v1)
+    api_base: str = ""  # User must set this
     model: str = ""  # Default model for this provider
     extra_headers: dict[str, str] | None = None
 
