@@ -412,16 +412,17 @@ def _archive_all_with_hardclip(session: Session, sessions, active_tokens: int) -
     timeline.sort(key=lambda x: x[0])
 
     # Determine which items to remove (oldest first)
+    # ALWAYS clip until under target - remove from oldest until we're safely below threshold
     items_to_remove = []
     tokens_to_remove = 0
 
     for ts, source, content in timeline:
-        if source == "message":
-            msg_tokens = estimate_message_tokens(content)
-            if current_msg_tokens - tokens_to_remove - msg_tokens < target_tokens:
-                break  # Stop before going under target
-            tokens_to_remove += msg_tokens
         items_to_remove.append((ts, source, content))
+        if source == "message":
+            tokens_to_remove += estimate_message_tokens(content)
+        # Check AFTER adding - we want to go UNDER target, not stop at target
+        if current_msg_tokens - tokens_to_remove <= target_tokens:
+            break  # Now we can stop - we're under target
 
     if not items_to_remove:
         return
@@ -1085,7 +1086,7 @@ class MemoryConsolidator:
 
             # Step 2: Check with UPDATED estimated value (after Step 1 processed)
             if estimated > step2_threshold:
-                logger.debug(
+                logger.info(
                     "Conveyor belt Step2 {}: {}/{} (last resort at {}%)",
                     session.key,
                     estimated,
