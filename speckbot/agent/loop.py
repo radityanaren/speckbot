@@ -63,9 +63,8 @@ class AgentLoop:
         tool_truncation_percent: int = 50,
         tool_result_max_chars: int = 10_000,
         summary_config: dict | None = None,
-        web_search_config: WebSearchConfig | None = None,
-        web_proxy: str | None = None,
-        exec_config: BashToolConfig | None = None,
+        web_search_config: "ToolsConfig | dict | None" = None,
+        exec_config: "ToolsConfig | dict | None" = None,
         cron_service: CronService | None = None,
         restrict_to_workspace: bool = False,
         session_manager: SessionManager | None = None,
@@ -76,7 +75,6 @@ class AgentLoop:
         unified_timer=None,  # For resetting monologue counter on user messages
     ):
         from speckbot.agent.memory import SummaryConfig
-        from speckbot.config.schema import BashToolConfig, WebSearchConfig
 
         self.bus = bus
         self.channels_config = channels_config
@@ -87,9 +85,18 @@ class AgentLoop:
         self.active_window_tokens = active_window_tokens
         self.tool_truncation_percent = tool_truncation_percent
         self.tool_result_max_chars = tool_result_max_chars
-        self.web_search_config = web_search_config or WebSearchConfig()
-        self.web_proxy = web_proxy
-        self.exec_config = exec_config or BashToolConfig()
+
+        # Handle tools config - can be ToolsConfig, dict, or None
+        tools_config = web_search_config  # reuse the param name (passed as tools config)
+        if tools_config is None:
+            from speckbot.config.schema import ToolsConfig
+            tools_config = ToolsConfig()
+        elif isinstance(tools_config, dict):
+            from speckbot.config.schema import ToolsConfig
+            tools_config = ToolsConfig(**tools_config)
+
+        self.tools_config = tools_config
+        self.exec_config = exec_config or tools_config
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 
@@ -130,8 +137,7 @@ class AgentLoop:
             workspace=workspace,
             bus=bus,
             model=self.model,
-            web_search_config=self.web_search_config,
-            web_proxy=web_proxy,
+            web_search_config=self.tools_config,
             exec_config=self.exec_config,
             restrict_to_workspace=restrict_to_workspace,
         )
@@ -222,14 +228,14 @@ class AgentLoop:
         self.tools.register(
             BashTool(
                 working_dir=str(self.workspace),
-                timeout=self.exec_config.timeout,
+                timeout=self.exec_config.exec_timeout,
                 restrict_to_workspace=self.restrict_to_workspace,
-                path_append=self.exec_config.path_append,
-                bash_path=self.exec_config.bash_path,
+                path_append=self.exec_config.exec_path_append,
+                bash_path=self.exec_config.exec_bash_path,
             )
         )
-        self.tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))
-        self.tools.register(WebFetchTool(proxy=self.web_proxy))
+        self.tools.register(WebSearchTool(config=self.tools_config, proxy=self.tools_config.web_proxy))
+        self.tools.register(WebFetchTool(proxy=self.tools_config.web_proxy))
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
