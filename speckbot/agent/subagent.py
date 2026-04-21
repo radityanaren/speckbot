@@ -15,7 +15,7 @@ from speckbot.agent.tools.bash import BashTool
 from speckbot.agent.tools.web import WebFetchTool, WebSearchTool
 from speckbot.bus.events import InboundMessage
 from speckbot.bus.queue import MessageBus
-from speckbot.config.schema import ExecToolConfig
+from speckbot.config.schema import BashToolConfig
 from speckbot.providers.base import LLMProvider
 from speckbot.utils.helpers import build_assistant_message
 
@@ -31,10 +31,10 @@ class SubagentManager:
         model: str | None = None,
         web_search_config: "WebSearchConfig | None" = None,
         web_proxy: str | None = None,
-        exec_config: "ExecToolConfig | None" = None,
+        exec_config: "BashToolConfig | None" = None,
         restrict_to_workspace: bool = False,
     ):
-        from speckbot.config.schema import ExecToolConfig, WebSearchConfig
+        from speckbot.config.schema import BashToolConfig, WebSearchConfig
 
         self.provider = provider
         self.workspace = workspace
@@ -42,7 +42,7 @@ class SubagentManager:
         self.model = model or provider.get_default_model()
         self.web_search_config = web_search_config or WebSearchConfig()
         self.web_proxy = web_proxy
-        self.exec_config = exec_config or ExecToolConfig()
+        self.exec_config = exec_config or BashToolConfig()
         self.restrict_to_workspace = restrict_to_workspace
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}

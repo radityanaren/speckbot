@@ -266,3 +266,16 @@ class Config(BaseSettings):
         return p.extra_headers if p else None
 
     model_config = ConfigDict(env_prefix="SPECKBOT_", env_nested_delimiter="__")
+
+
+# =============================================================================
+# Tool Configurations (used by agent/loop.py, agent/subagent.py)
+# =============================================================================
+
+
+class BashToolConfig(Base):
+    """Bash/exec tool configuration."""
+
+    timeout: int = 60
+    path_append: str = ""
+    bash_path: str | None = None
