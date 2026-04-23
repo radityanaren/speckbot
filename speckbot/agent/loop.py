@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from loguru import logger
 
 from speckbot.agent.context import ContextBuilder
-from speckbot.agent.memory import MemoryConsolidator, consolidate_oldest_messages
+from speckbot.agent.memory import MemoryConsolidator
 from speckbot.agent.skills import BUILTIN_SKILLS_DIR
 from speckbot.agent.subagent import SubagentManager
 from speckbot.agent.tools.cron import CronTool
@@ -551,16 +551,69 @@ class AgentLoop:
             )
             return
 
-        # Step 4: Use shared consolidation function
+        # Step 4: Archive oldest 90% to JSONL
+        # Separate messages and summaries from oldest_90
+        oldest_messages = [item[2] for item in oldest_90 if item[1] == "message"]
+        oldest_summaries = [item[2] for item in oldest_90 if item[1] == "summary"]
+
+        # Write messages to archive JSONL
+        archive_file = self.sessions.archive_dir / f"{safe_filename(session.key)}.jsonl"
+        with open(archive_file, "a", encoding="utf-8") as f:
+            for m in oldest_messages:
+                f.write(json.dumps(m, ensure_ascii=False) + "\n")
+
+        # Step 5: Run LLM consolidation on oldest messages
         llm_summary = ""
         if oldest_messages and self.provider and self.model:
-            llm_summary = await consolidate_oldest_messages(
-                session,
-                self.provider,
-                self.model,
-                self.sessions,
-                self.sessions.archive_dir,
-            )
+            try:
+                # Format messages as conversation for LLM
+                conversation_lines = []
+                for m in oldest_messages:
+                    role = m.get("role", "unknown")
+                    content = m.get("content", "")
+                    if isinstance(content, str) and content:
+                        # Truncate long content
+                        if len(content) > 500:
+                            content = content[:500] + "..."
+                        ts = m.get("timestamp", "")
+                        ts_str = ts.split("T")[1][:5] if "T" in ts else ts[:5]
+                        conversation_lines.append(f"[{ts_str}] {role}: {content}")
+
+                if conversation_lines:
+                    consolidation_prompt = (
+                        "Summarize this conversation history concisely, preserving key facts, "
+                        "decisions, and important context. Use a brief paragraph format.\n\n"
+                        + "\n".join(conversation_lines)
+                    )
+
+                    llm_response = await self.provider.chat_with_retry(
+                        messages=[{"role": "user", "content": consolidation_prompt}],
+                        tools=None,
+                        model=self.model,
+                    )
+
+                    if llm_response.content:
+                        llm_summary = f"[Memory: {llm_response.content.strip()}]"
+                        logger.info("Flush: LLM consolidation complete ({} chars)", len(llm_response.content))
+            except Exception as e:
+                logger.warning("Flush LLM consolidation failed: {}", e)
+                llm_summary = "[LLM consolidation failed]"
+
+        # Step 6: Rebuild session
+        # Keep newest 10% messages, add LLM summary if available
+        session.messages = [item[2] for item in newest_10 if item[1] == "message"]
+
+        # Clear existing summaries and add LLM output (if available)
+        session.summary_lines = []
+        if llm_summary:
+            session.summary_lines.append(llm_summary)
+        # Also add summaries from newest_10
+        for item in newest_10:
+            if item[1] == "summary":
+                session.summary_lines.append(item[2])
+
+        # Step 8: Save session
+        self.sessions.save(session)
 
         content = f"Flushed: {len(oldest_90)} oldest archived, {len(newest_10)} newest kept"
         await self.bus.publish_outbound(
@@ -648,6 +701,63 @@ class AgentLoop:
         AgentLoop is the orchestrator, MessageHandler does the work.
         """
         return await self._message_handler.process(msg, session_key, on_progress)
+
+    def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
+        """Save new-turn messages into session, truncating large tool results."""
+        from datetime import datetime
+
+        for m in messages[skip:]:
+            entry = dict(m)
+            role, content = entry.get("role"), entry.get("content")
+            if role == "assistant" and not content and not entry.get("tool_calls"):
+                continue  # skip empty assistant messages — they poison session context
+
+            # MARK SKIP: Explicitly mark assistant response AFTER tool results
+            # This is used by the conveyor belt to skip summarization
+            if role == "assistant" and session.messages:
+                last_msg = session.messages[-1]
+                if last_msg.get("role") == "tool":
+                    entry["_is_skip"] = True
+
+            if (
+                role == "tool"
+                and isinstance(content, str)
+                and len(content) > self.tool_result_max_chars
+            ):
+                entry["content"] = content[: self.tool_result_max_chars] + "\n... (truncated)"
+            elif role == "user":
+                if isinstance(content, str) and content.startswith(
+                    ContextBuilder._RUNTIME_CONTEXT_TAG
+                ):
+                    # Strip the runtime-context prefix, keep only the user text.
+                    parts = content.split("\n\n", 1)
+                    if len(parts) > 1 and parts[1].strip():
+                        entry["content"] = parts[1]
+                    else:
+                        continue
+                if isinstance(content, list):
+                    filtered = []
+                    for c in content:
+                        if (
+                            c.get("type") == "text"
+                            and isinstance(c.get("text"), str)
+                            and c["text"].startswith(ContextBuilder._RUNTIME_CONTEXT_TAG)
+                        ):
+                            continue  # Strip runtime context from multimodal messages
+                        if c.get("type") == "image_url" and c.get("image_url", {}).get(
+                            "url", ""
+                        ).startswith("data:image/"):
+                            path = (c.get("_meta") or {}).get("path", "")
+                            placeholder = f"[image: {path}]" if path else "[image]"
+                            filtered.append({"type": "text", "text": placeholder})
+                        else:
+                            filtered.append(c)
+                    if not filtered:
+                        continue
+                    entry["content"] = filtered
+            entry.setdefault("timestamp", datetime.now().isoformat())
+            session.messages.append(entry)
+        session.updated_at = datetime.now()
 
     async def process_direct(
         self,
