@@ -15,7 +15,7 @@ from speckbot.agent.tools.bash import BashTool
 from speckbot.agent.tools.web import WebFetchTool, WebSearchTool
 from speckbot.bus.events import InboundMessage
 from speckbot.bus.queue import MessageBus
-from speckbot.config.schema import BashToolConfig
+from speckbot.config.schema import ExecToolConfig
 from speckbot.providers.base import LLMProvider
 from speckbot.utils.helpers import build_assistant_message
 
@@ -29,18 +29,20 @@ class SubagentManager:
         workspace: Path,
         bus: MessageBus,
         model: str | None = None,
-        web_search_config: "ToolsConfig | None" = None,
-        exec_config: "ToolsConfig | None" = None,
+        web_search_config: "WebSearchConfig | None" = None,
+        web_proxy: str | None = None,
+        exec_config: "ExecToolConfig | None" = None,
         restrict_to_workspace: bool = False,
     ):
-        from speckbot.config.schema import ToolsConfig
+        from speckbot.config.schema import ExecToolConfig, WebSearchConfig
 
         self.provider = provider
         self.workspace = workspace
         self.bus = bus
         self.model = model or provider.get_default_model()
-        self.tools_config = web_search_config or ToolsConfig()
-        self.exec_config = exec_config or self.tools_config
+        self.web_search_config = web_search_config or WebSearchConfig()
+        self.web_proxy = web_proxy
+        self.exec_config = exec_config or ExecToolConfig()
         self.restrict_to_workspace = restrict_to_workspace
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
@@ -103,12 +105,12 @@ class SubagentManager:
                     working_dir=str(self.workspace),
                     timeout=self.exec_config.timeout,
                     restrict_to_workspace=self.restrict_to_workspace,
-                    path_append=self.exec_config.exec_path_append,
-                    bash_path=self.exec_config.exec_bash_path,
+                    path_append=self.exec_config.path_append,
+                    bash_path=self.exec_config.bash_path,
                 )
             )
-            tools.register(WebSearchTool(config=self.tools_config, proxy=self.tools_config.web_proxy))
-            tools.register(WebFetchTool(proxy=self.tools_config.web_proxy))
+            tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))
+            tools.register(WebFetchTool(proxy=self.web_proxy))
 
             system_prompt = self._build_subagent_prompt()
             messages: list[dict[str, Any]] = [
