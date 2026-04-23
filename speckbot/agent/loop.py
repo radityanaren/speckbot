@@ -35,7 +35,7 @@ from speckbot.session.manager import Session, SessionManager
 from speckbot.utils.constants import TOOL_RESULT_MAX_CHARS
 
 if TYPE_CHECKING:
-    from speckbot.config.schema import ChannelsConfig, ExecToolConfig, WebSearchConfig
+    from speckbot.config.schema import ChannelsConfig, BashToolConfig, WebSearchConfig
 
 
 class AgentLoop:
@@ -65,7 +65,7 @@ class AgentLoop:
         summary_config: dict | None = None,
         web_search_config: WebSearchConfig | None = None,
         web_proxy: str | None = None,
-        exec_config: ExecToolConfig | None = None,
+        exec_config: BashToolConfig | None = None,
         cron_service: CronService | None = None,
         restrict_to_workspace: bool = False,
         session_manager: SessionManager | None = None,
@@ -76,7 +76,7 @@ class AgentLoop:
         unified_timer=None,  # For resetting monologue counter on user messages
     ):
         from speckbot.agent.memory import SummaryConfig
-        from speckbot.config.schema import ExecToolConfig, WebSearchConfig
+        from speckbot.config.schema import BashToolConfig, WebSearchConfig
 
         self.bus = bus
         self.channels_config = channels_config
@@ -89,7 +89,7 @@ class AgentLoop:
         self.tool_result_max_chars = tool_result_max_chars
         self.web_search_config = web_search_config or WebSearchConfig()
         self.web_proxy = web_proxy
-        self.exec_config = exec_config or ExecToolConfig()
+        self.exec_config = exec_config or BashToolConfig()
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 

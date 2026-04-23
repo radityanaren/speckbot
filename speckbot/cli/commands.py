@@ -33,7 +33,7 @@ from rich.text import Text
 
 from speckbot import __logo__, __version__
 from speckbot.config.paths import get_workspace_path
-from speckbot.config.schema import Config
+from speckbot.config.schema import Config, WebSearchConfig, BashToolConfig
 from speckbot.utils.helpers import sync_workspace_templates
 
 app = typer.Typer(
@@ -264,7 +264,6 @@ def onboard(
 ):
     """Initialize SpeckBot configuration and workspace."""
     from speckbot.config.loader import get_config_path, load_config, save_config, set_config_path
-    from speckbot.config.schema import Config
 
     if config:
         config_path = Path(config).expanduser().resolve()
@@ -561,9 +560,18 @@ def gateway(
             "result_max_chars": config.agents.defaults.summary_result_max_chars,
             "assistant_max_chars": config.agents.defaults.summary_assistant_max_chars,
         },
-        web_search_config=config.tools.web.search,
-        web_proxy=config.tools.web.proxy or None,
-        exec_config=config.tools.exec,
+        web_search_config=WebSearchConfig(
+            provider=config.tools.web_search_provider,
+            api_key=config.tools.web_search_api_key,
+            base_url=config.tools.web_search_base_url,
+            max_results=config.tools.web_search_max_results,
+        ),
+        web_proxy=config.tools.web_proxy,
+        exec_config=BashToolConfig(
+            timeout=config.tools.exec_timeout,
+            path_append=config.tools.exec_path_append,
+            bash_path=config.tools.exec_bash_path,
+        ),
         cron_service=cron,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,

@@ -208,34 +208,6 @@ class ToolsConfig(Base):
     restrict_to_workspace: bool = False
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=_default_mcp_servers)
 
-    @property
-    def web(self) -> "WebToolsConfig":
-        """Return WebToolsConfig for backward compatibility."""
-        return WebToolsConfig(
-            proxy=self.web_proxy,
-            search=WebSearchConfig(
-                provider=self.web_search_provider,
-                api_key=self.web_search_api_key,
-                base_url=self.web_search_base_url,
-                max_results=self.web_search_max_results,
-            ),
-        )
-
-    @property
-    def exec(self) -> "ExecToolConfig":
-        """Return ExecToolConfig for backward compatibility."""
-        return ExecToolConfig(
-            timeout=self.exec_timeout,
-            path_append=self.exec_path_append,
-            bash_path=self.exec_bash_path,
-        )
-
-    @property
-    def transcription(self) -> "TranscriptionConfig":
-        """Return TranscriptionConfig for backward compatibility."""
-        # This property is deprecated - use root Config.transcription instead
-        return TranscriptionConfig()
-
 
 # ==================== ROOT CONFIG ====================
 
@@ -296,34 +268,14 @@ class Config(BaseSettings):
     model_config = ConfigDict(env_prefix="SPECKBOT_", env_nested_delimiter="__")
 
 
-# ==================== BACKWARD COMPATIBILITY ALIASES ====================
-# These classes were flattened into ToolsConfig but kept as aliases for imports
-class ExecToolConfig(Base):
-    """Shell exec tool configuration (deprecated, use ToolsConfig.exec_* fields)."""
+# =============================================================================
+# Tool Configurations (used by agent/loop.py, agent/subagent.py)
+# =============================================================================
+
+
+class BashToolConfig(Base):
+    """Bash/exec tool configuration."""
 
     timeout: int = 60
     path_append: str = ""
     bash_path: str | None = None
-
-
-class WebToolsConfig(Base):
-    """Web tools configuration (deprecated, use ToolsConfig.web_* fields)."""
-
-    proxy: str | None = None
-    search: WebSearchConfig = Field(default_factory=WebSearchConfig)
-
-
-class MonologueConfig(Base):
-    """Monologue system configuration (deprecated, use AgentsConfig monologue_* fields)."""
-
-    enabled: bool = False
-    idle_seconds: int = 300
-    prompt: str = "Hey, been a while — what are you working on?"
-    visible: bool = True
-
-
-class HeartbeatConfig(Base):
-    """Heartbeat service configuration (deprecated, use AgentsConfig heartbeat_* fields)."""
-
-    enabled: bool = True
-    interval_seconds: int = 30 * 60
