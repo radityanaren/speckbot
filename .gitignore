@@ -2,6 +2,11 @@
 .assets
 .docs
 .env
+*.md
+!README.md
+!CONTRIBUTING.md
+!LICENSE
+!CODE.md
 *.pyc
 dist/
 build/
