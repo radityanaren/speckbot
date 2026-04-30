@@ -6,7 +6,10 @@
 !README.md
 !CONTRIBUTING.md
 !LICENSE
-!cli/templates/CODE.md
+!speckbot/cli/templates/CODE.md
+!speckbot/cli/templates/AGENTS.md
+!speckbot/cli/templates/MEMORY.md
+!speckbot/cli/templates/HEARTBEAT.md
 *.pyc
 dist/
 build/
