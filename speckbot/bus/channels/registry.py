@@ -16,7 +16,7 @@ _INTERNAL = frozenset({"base", "manager", "registry"})
 
 def discover_channel_names() -> list[str]:
     """Return all built-in channel module names by scanning the package (zero imports)."""
-    import speckbot.channels as pkg
+    import speckbot.bus.channels as pkg
 
     return [
         name
