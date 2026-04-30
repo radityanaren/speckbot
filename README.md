@@ -120,6 +120,35 @@ Set the active provider in `agents.defaults.provider`.
 | `security` | Block patterns, ASK tools, audit log |
 | `gateway` | Host/port for WebSocket gateway |
 
+## Commands
+
+### CLI Commands
+
+These are Typer commands available via `speckbot <command>`:
+
+| Command | Description |
+|---------|-------------|
+| `onboard` | Initialize config and workspace (`speckbot onboard`) |
+| `gateway` | Start the SpeckBot gateway (`speckbot gateway`) |
+| `status` | Show config, workspace, and provider status |
+
+Add custom CLI commands by adding `@app.command()` functions in `speckbot/cli/commands.py`.
+
+### Bot Commands
+
+These are chat commands (type `/command` in Telegram, Discord, or CLI):
+
+| Command | Description |
+|---------|-------------|
+| `/new` | Clear session, archive existing messages |
+| `/flush` | Compact oldest 90% via LLM, keep newest 10% |
+| `/memories` | List saved knowledges and projects |
+| `/stop` | Stop the current task |
+| `/restart` | Restart SpeckBot |
+| `/help` | Show available commands |
+
+Add custom bot commands by adding entries to `_COMMANDS` in `speckbot/agent/definitions.py`.
+
 ## Sessions
 
 SpeckBot uses a **conveyor belt** session system — messages flow through three layers:

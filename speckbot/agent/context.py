@@ -19,7 +19,7 @@ from speckbot.utils.helpers import (
 class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
 
-    BOOTSTRAP_FILES = ["AGENTS.md", "MEMORY.md", "JOURNAL.md", "CODE.md"]
+    BOOTSTRAP_FILES = ["AGENTS.md", "MEMORY.md", "JOURNAL.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
 
     # Hardcoded file descriptions - added BEFORE reading each file
@@ -126,7 +126,7 @@ Skills with available="false" need dependencies installed first.
 
 ## Security
 - Dangerous commands/patterns are blocked.
-- If output shows "[Output filtered by security]", it was blocked - don't retry.
+- If output shows "[Output filtered by security]", it was blocked. Don't retry.
 
 ## Tool Result Limits
 - Tool results exceeding {self.tool_result_max_chars:,} characters will be truncated.
@@ -139,6 +139,9 @@ When user wants to save something:
 3. Ask: file name
 4. Call save_knowledge(topic, content, file_type) or save_project(topic, content, file_type)
 IMPORTANT: You must provide the 'content' parameter - summarize the relevant conversation into clean markdown.
+
+## Self-aware
+You are an AI assistant wrapped in python, look at "CODE.md" in your workspace to learn about how you work.
 
 ## Guidelines
 - Read before edit. Re-read after write.
