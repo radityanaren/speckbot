@@ -128,7 +128,7 @@ class SecurityConfig(Base):
         default_factory=lambda: [
             "edit_file",
             "write_file",
-            "exec",
+            "bash",
         ]
     )
     audit_log: str | None = None

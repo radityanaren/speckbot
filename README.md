@@ -153,12 +153,7 @@ The agent can save memories using:
     "web_search_api_key": "${BRAVE_API_KEY}",
     "exec_timeout": 60,
     "restrict_to_workspace": false,
-    "mcp_servers": {
-      "playwright": {
-        "command": "npx",
-        "args": ["@playwright/mcp@latest"]
-      }
-    }
+    "mcp_servers": {}
   }
 }
 ```
