@@ -1,0 +1,88 @@
+# Speckbot(ant emoji)
+
+## About
+
+(I will write this myself)
+
+## Features
+1. bla
+2. bla
+3. 
+
+## Quick Install Guide
+
+### Download and install
+```
+git clone https:/...
+```
+```
+cd speckbot
+```
+```
+pip install -e .
+```
+### Configuration
+
+edit .env, edit config.json to edit providers, channels, security blabla(make the explanation tidy)
+
+and run
+
+```
+speckbot onboard
+```
+
+## Further dive
+
+...
+
+## config.json
+
+quick explanation of config.json class, how we can add .env for config and how to apply, how to add more providers, e.g provider_b in the json itself etc
+
+## Sessions
+
+how conveyorbelt session system works, and when and how compaction occurs and how to edit them in config
+
+## Security system
+
+full explanation of how ASK, BLOCKED works, and how to add them
+
+## Services
+
+### Monologue
+full explanation and how to configure them
+
+### Dream
+full explanation and how to configure them
+
+### Cron & Heartbeat
+full explanation and how to add them
+
+## Skills
+
+Explain how to add skills manually or through the agent itself
+
+## Tools
+
+### Python tools
+
+List system existed tools and how to add custom python tools
+
+### MCP server	
+
+Explain how to add MCP server
+
+## Channels
+
+List existed channels and how to add custom channels
+
+## Providers
+
+List existed providers and how to add custom providers
+
+## Structure
+
+Full structure of speckbot codebase
+
+
+

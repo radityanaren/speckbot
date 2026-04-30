@@ -129,7 +129,6 @@ class SecurityConfig(Base):
             "edit_file",
             "write_file",
             "exec",
-            "mcp_playwright_browser_fill_form",
         ]
     )
     audit_log: str | None = None
@@ -178,16 +177,6 @@ class MCPServerConfig(Base):
     enabled_tools: list[str] = Field(default_factory=lambda: ["*"])
 
 
-def _default_mcp_servers() -> dict[str, MCPServerConfig]:
-    """Default MCP servers."""
-    return {
-        "playwright": MCPServerConfig(
-            command="npx",
-            args=["@playwright/mcp@latest"],
-            enabled_tools=["*"],
-        )
-    }
-
 
 class ToolsConfig(Base):
     """Tools configuration."""
@@ -206,7 +195,7 @@ class ToolsConfig(Base):
     )
     # MCP
     restrict_to_workspace: bool = False
-    mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=_default_mcp_servers)
+    mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
 
 # ==================== ROOT CONFIG ====================
