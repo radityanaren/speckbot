@@ -110,7 +110,7 @@ Skills with available="false" need dependencies installed first.
 
 """
 
-        return f"""# You are a helpful AI agent.
+        return f"""# You are a helpful AI assistant.
 
 ## Runtime
 {runtime}
@@ -134,7 +134,7 @@ Skills with available="false" need dependencies installed first.
 ## Saving Memories
 If there's anything substantial, ask user if they want to save this conversation, when it's time to save something:
 1. Ask: knowledge or project?
-2. Ask: topic name
+2. Ask: topic folder name
 3. Ask: file name
 4. Call save_knowledge(topic, content, file_type) or save_project(topic, content, file_type)
 IMPORTANT: You must provide the 'content' parameter - summarize the relevant conversation into clean markdown.
