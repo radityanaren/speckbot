@@ -19,7 +19,7 @@ from speckbot.utils.helpers import (
 class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
 
-    BOOTSTRAP_FILES = ["AGENTS.md", "MEMORY.md", "JOURNAL.md"]
+    BOOTSTRAP_FILES = ["AGENTS.md", "MEMORY.md", "JOURNAL.md", "CODE.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
 
     # Hardcoded file descriptions - added BEFORE reading each file
@@ -27,6 +27,7 @@ class ContextBuilder:
         "AGENTS.md": "File: Your instructions and behavioral guidelines.",
         "MEMORY.md": "File: Index of saved knowledges (knowledges/) and projects (projects/). Use save_knowledge and save_project tools to save.",
         "JOURNAL.md": "File: Your private inner monologue journal entries.",
+        "CODE.md": "File: Code architecture documentation for the SpeckBot codebase.",
     }
 
     def __init__(self, workspace: Path, security=None):
