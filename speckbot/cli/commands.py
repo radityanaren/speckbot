@@ -303,7 +303,10 @@ def onboard(
 
     # Create .env file next to config for secrets
     env_path = config_path.parent / ".env"
-        env_content = """# Add your secrets below:\n"""
+    if not env_path.exists():
+        env_content = """# Add your secrets below:
+"""
+        env_path.write_text(env_content, encoding="utf-8")
         console.print(f"[green]✓[/green] Created .env template at {env_path}")
     else:
         console.print(f"[dim].env already exists at {env_path}[/dim]")
