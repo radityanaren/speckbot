@@ -526,50 +526,20 @@ When Step 1+2 don't free enough space:
 
 ```
 speckbot/
-├── __init__.py          # Package init, version
-├── __main__.py         # Entry point: python -m speckbot
-├── agent/
-│   ├── loop.py         # AgentLoop + MessageHandler
-│   ├── context.py     # ContextBuilder
-│   ├── memory.py      # MemoryConsolidator, MemoryStore
-│   ├── skills.py      # SkillsLoader
-│   ├── subagent.py   # SubagentManager
-│   ├── security.py   # SecurityService
-│   ├── definitions.py # Help text, bot commands
-│   └── tools/        # Tool implementations
-├── bus/
-│   ├── events.py     # InboundMessage, OutboundMessage
-│   └── queue.py      # MessageBus
-├── channels/
-│   ├── base.py       # BaseChannel
-│   ├── telegram.py  # TelegramChannel
-│   ├── discord.py   # DiscordChannel
-│   ├── manager.py   # ChannelManager
-│   └── registry.py  # Channel registry
-├── providers/
-│   ├── base.py      # LLMProvider, LLMResponse
-│   ├── litellm_provider.py  # LiteLLMProvider
-│   ├── registry.py  # Provider specs
-│   └── custom_provider.py  # CustomProvider
-├── config/
-│   ├── schema.py    # Config Pydantic models
-│   ├── loader.py   # Config loading
-│   └── paths.py     # Path helpers
-├── security/
-│   ├── __init__.py  # SecurityGateway
-│   └── detectors/   # BlockDetector, AskDetector
-├── services/
-│   ├── timer.py     # UnifiedTimer
-│   ├── monologue/  # MonologueSystem
-│   ├── heartbeat/  # HeartbeatService
-│   ├── cron/       # CronService
-│   └── dream/      # DreamEngine
-├── session/
-│   └── manager.py  # Session, SessionManager
-├── cli/
-│   └── commands.py # Typer CLI commands
-└── utils/
-    ├── helpers.py   # Utility functions
-    ├── constants.py # Constants
-    └── evaluator.py # Response evaluation
+├── agent/ (loop.py, context.py, security.py, subagent.py, definitions.py)
+├── bus/ (events.py, queue.py, channels/)
+├── cli/ (commands.py, templates/)
+├── config/ (schema.py, loader.py, paths.py)
+├── providers/ (base.py, litellm_provider.py, custom_provider.py, registry.py)
+├── security/ (security.py, detectors/)
+├── services/ (timer.py, monologue/, heartbeat/, cron/, dream/)
+├── session/ (manager.py, memory.py)
+├── skills/ (__init__.py [was agent/skills.py], README.md, skill-creator/)
+├── tools/ (__init__.py, base.py, bash.py, cron.py, filesystem.py, mcp.py, message.py, registry.py, spawn.py, web.py)
+├── utils/ (helpers.py, constants.py, evaluator.py)
+├── __init__.py
+├── __main__.py
+├── CODE.md
+├── README.md
+└── pyproject.toml
 ```
