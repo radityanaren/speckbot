@@ -27,7 +27,6 @@ class ContextBuilder:
         "AGENTS.md": "File: Your instructions and behavioral guidelines.",
         "MEMORY.md": "File: Index of saved knowledges (knowledges/) and projects (projects/). Use save_knowledge and save_project tools to save.",
         "JOURNAL.md": "File: Your private inner monologue journal entries.",
-        "CODE.md": "File: Code architecture documentation for the SpeckBot codebase.",
     }
 
     def __init__(self, workspace: Path, security=None):
@@ -133,7 +132,7 @@ Skills with available="false" need dependencies installed first.
 - Design queries to fit within this limit when possible.
 
 ## Saving Memories
-When user wants to save something:
+If there's anything substantial, ask user if they want to save this conversation, when it's time to save something:
 1. Ask: knowledge or project?
 2. Ask: topic name
 3. Ask: file name
