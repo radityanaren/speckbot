@@ -4,7 +4,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
 
-from speckbot.agent.tools.base import Tool
+from speckbot.tools.base import Tool
 from speckbot.services.cron import CronService
 from speckbot.services.cron.types import CronJobState, CronSchedule
 

@@ -363,7 +363,7 @@ def _onboard_plugins(config_path: Path) -> None:
     """Inject default config for all discovered channels (built-in + plugins)."""
     import json
 
-    from speckbot.channels.registry import discover_all
+    from speckbot.bus.channels.registry import discover_all
 
     all_channels = discover_all()
     if not all_channels:
@@ -520,7 +520,7 @@ def gateway(
     """Start the SpeckBot gateway."""
     from speckbot.agent.loop import AgentLoop
     from speckbot.bus.queue import MessageBus
-    from speckbot.channels.manager import ChannelManager
+    from speckbot.bus.channels.manager import ChannelManager
     from speckbot.config.paths import get_cron_dir
     from speckbot.services.cron.service import CronService
     from speckbot.services.cron.types import CronJob
@@ -589,8 +589,8 @@ def gateway(
     # Set cron callback (needs agent)
     async def on_cron_job(job: CronJob) -> str | None:
         """Execute a cron job through the agent."""
-        from speckbot.agent.tools.cron import CronTool
-        from speckbot.agent.tools.message import MessageTool
+        from speckbot.tools.cron import CronTool
+        from speckbot.tools.message import MessageTool
         from speckbot.utils.evaluator import evaluate_response
 
         reminder_note = (

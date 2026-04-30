@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from speckbot.agent.tools.base import Tool
+from speckbot.tools.base import Tool
 from speckbot.utils.constants import SHELL_MAX_TIMEOUT, SHELL_MAX_OUTPUT
 
 

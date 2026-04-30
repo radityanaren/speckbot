@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
-    from speckbot.channels.base import BaseChannel
+    from speckbot.bus.channels.base import BaseChannel
 
 _INTERNAL = frozenset({"base", "manager", "registry"})
 
@@ -27,14 +27,14 @@ def discover_channel_names() -> list[str]:
 
 def load_channel_class(module_name: str) -> type[BaseChannel]:
     """Import *module_name* and return the first BaseChannel subclass found."""
-    from speckbot.channels.base import BaseChannel as _Base
+    from speckbot.bus.channels.base import BaseChannel as _Base
 
-    mod = importlib.import_module(f"speckbot.channels.{module_name}")
+    mod = importlib.import_module(f"speckbot.bus.channels.{module_name}")
     for attr in dir(mod):
         obj = getattr(mod, attr)
         if isinstance(obj, type) and issubclass(obj, _Base) and obj is not _Base:
             return obj
-    raise ImportError(f"No BaseChannel subclass in speckbot.channels.{module_name}")
+    raise ImportError(f"No BaseChannel subclass in speckbot.bus.channels.{module_name}")
 
 
 def discover_plugins() -> dict[str, type[BaseChannel]]:

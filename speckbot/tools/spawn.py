@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Any
 
-from speckbot.agent.tools.base import Tool
+from speckbot.tools.base import Tool
 
 if TYPE_CHECKING:
     from speckbot.agent.subagent import SubagentManager

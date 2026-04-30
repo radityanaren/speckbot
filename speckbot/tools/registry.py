@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from speckbot.agent.tools.base import Tool
+from speckbot.tools.base import Tool
 
 if TYPE_CHECKING:
     from speckbot.agent.security import SecurityService

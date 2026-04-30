@@ -15,16 +15,16 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from loguru import logger
 
 from speckbot.agent.context import ContextBuilder
-from speckbot.agent.memory import MemoryConsolidator, consolidate_oldest_messages
-from speckbot.agent.skills import BUILTIN_SKILLS_DIR
+from speckbot.session.memory import MemoryConsolidator, consolidate_oldest_messages
+from speckbot.skills import BUILTIN_SKILLS_DIR
 from speckbot.agent.subagent import SubagentManager
-from speckbot.agent.tools.cron import CronTool
-from speckbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
-from speckbot.agent.tools.message import MessageTool
-from speckbot.agent.tools.registry import ToolRegistry
-from speckbot.agent.tools.bash import BashTool
-from speckbot.agent.tools.spawn import SpawnTool
-from speckbot.agent.tools.web import WebFetchTool, WebSearchTool
+from speckbot.tools.cron import CronTool
+from speckbot.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+from speckbot.tools.message import MessageTool
+from speckbot.tools.registry import ToolRegistry
+from speckbot.tools.bash import BashTool
+from speckbot.tools.spawn import SpawnTool
+from speckbot.tools.web import WebFetchTool, WebSearchTool
 from speckbot.bus.events import InboundMessage, OutboundMessage
 from speckbot.bus.queue import MessageBus
 from speckbot.providers.base import LLMProvider
@@ -75,7 +75,7 @@ class AgentLoop:
         monologue_config: dict | None = None,
         unified_timer=None,  # For resetting monologue counter on user messages
     ):
-        from speckbot.agent.memory import SummaryConfig
+        from speckbot.session.memory import SummaryConfig
         from speckbot.config.schema import BashToolConfig, WebSearchConfig
 
         self.bus = bus
@@ -240,7 +240,7 @@ class AgentLoop:
         if self._mcp_connected or self._mcp_connecting or not self._mcp_servers:
             return
         self._mcp_connecting = True
-        from speckbot.agent.tools.mcp import connect_mcp_servers
+        from speckbot.tools.mcp import connect_mcp_servers
 
         try:
             self._mcp_stack = AsyncExitStack()

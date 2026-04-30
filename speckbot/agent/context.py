@@ -6,8 +6,8 @@ import platform
 from pathlib import Path
 from typing import Any
 
-from speckbot.agent.memory import MemoryStore
-from speckbot.agent.skills import SkillsLoader
+from speckbot.session.memory import MemoryStore
+from speckbot.skills import SkillsLoader
 from speckbot.utils.helpers import (
     build_assistant_message,
     current_time_str,

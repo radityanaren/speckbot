@@ -8,7 +8,7 @@ from typing import Any
 from loguru import logger
 
 from speckbot.bus.queue import MessageBus
-from speckbot.channels.base import BaseChannel
+from speckbot.bus.channels.base import BaseChannel
 from speckbot.config.schema import Config
 
 
@@ -32,7 +32,7 @@ class ChannelManager:
 
     def _init_channels(self) -> None:
         """Initialize channels discovered via pkgutil scan + entry_points plugins."""
-        from speckbot.channels.registry import discover_all
+        from speckbot.bus.channels.registry import discover_all
 
         # Get transcription API key from config.transcription.api_key (new schema)
         transcription_key = self.config.transcription.api_key if self.config.transcription else None

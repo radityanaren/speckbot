@@ -4,7 +4,7 @@ import difflib
 from pathlib import Path
 from typing import Any
 
-from speckbot.agent.tools.base import Tool
+from speckbot.tools.base import Tool
 from speckbot.utils.constants import (
     FILESYSTEM_MAX_CHARS,
     FILESYSTEM_DEFAULT_LIMIT,

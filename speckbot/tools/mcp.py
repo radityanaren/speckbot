@@ -7,8 +7,8 @@ from typing import Any
 import httpx
 from loguru import logger
 
-from speckbot.agent.tools.base import Tool
-from speckbot.agent.tools.registry import ToolRegistry
+from speckbot.tools.base import Tool
+from speckbot.tools.registry import ToolRegistry
 
 
 class MCPToolWrapper(Tool):

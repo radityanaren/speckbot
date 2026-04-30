@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 import httpx
 from loguru import logger
 
-from speckbot.agent.tools.base import Tool
+from speckbot.tools.base import Tool
 from speckbot.utils.constants import MAX_HTTP_REDIRECTS, UNTRUSTED_CONTENT_BANNER
 
 if TYPE_CHECKING:

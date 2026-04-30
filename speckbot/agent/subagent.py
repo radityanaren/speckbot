@@ -8,11 +8,11 @@ from typing import Any
 
 from loguru import logger
 
-from speckbot.agent.skills import BUILTIN_SKILLS_DIR
-from speckbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
-from speckbot.agent.tools.registry import ToolRegistry
-from speckbot.agent.tools.bash import BashTool
-from speckbot.agent.tools.web import WebFetchTool, WebSearchTool
+from speckbot.skills import BUILTIN_SKILLS_DIR
+from speckbot.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+from speckbot.tools.registry import ToolRegistry
+from speckbot.tools.bash import BashTool
+from speckbot.tools.web import WebFetchTool, WebSearchTool
 from speckbot.bus.events import InboundMessage
 from speckbot.bus.queue import MessageBus
 from speckbot.config.schema import BashToolConfig
@@ -213,7 +213,7 @@ Summarize this naturally for the user. Keep it brief (1-2 sentences). Do not men
     def _build_subagent_prompt(self) -> str:
         """Build a focused system prompt for the subagent."""
         from speckbot.agent.context import ContextBuilder
-        from speckbot.agent.skills import SkillsLoader
+        from speckbot.skills import SkillsLoader
 
         time_ctx = ContextBuilder._build_runtime_context(None, None)
         parts = [

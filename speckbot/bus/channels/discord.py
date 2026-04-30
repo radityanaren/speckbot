@@ -12,7 +12,7 @@ from loguru import logger
 
 from speckbot.bus.events import OutboundMessage
 from speckbot.bus.queue import MessageBus
-from speckbot.channels.base import BaseChannel
+from speckbot.bus.channels.base import BaseChannel
 from speckbot.config.paths import get_media_dir
 from speckbot.config.schema import Base
 from speckbot.utils.helpers import split_message

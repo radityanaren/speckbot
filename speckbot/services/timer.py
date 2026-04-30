@@ -259,7 +259,7 @@ class UnifiedTimer:
                             continue
 
                         # Use shared consolidation function (lazy import to avoid circular)
-                        from speckbot.agent.memory import consolidate_oldest_messages
+                        from speckbot.session.memory import consolidate_oldest_messages
                         await consolidate_oldest_messages(
                             session,
                             self._provider,

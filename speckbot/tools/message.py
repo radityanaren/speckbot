@@ -2,7 +2,7 @@
 
 from typing import Any, Awaitable, Callable
 
-from speckbot.agent.tools.base import Tool
+from speckbot.tools.base import Tool
 from speckbot.bus.events import OutboundMessage
 
 
