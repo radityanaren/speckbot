@@ -65,7 +65,7 @@ allow-direct-references = true
 [tool.hatch.build]
 include = [
     "speckbot/**/*.py",
-    "speckbot/templates/**/*.md",
+    "speckbot/cli/templates/**/*.md",
     "speckbot/skills/**/*.md",
     "speckbot/skills/**/*.sh",
 ]
