@@ -6,7 +6,7 @@
 !README.md
 !CONTRIBUTING.md
 !LICENSE
-!CODE.md
+!cli/templates/CODE.md
 *.pyc
 dist/
 build/
