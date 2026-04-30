@@ -1,96 +1,316 @@
-# SpeckBot 🤖
+# SpeckBot 🐜
 
-A lightweight, personal AI agent with a robust memory system.
+## About
 
-## What is SpeckBot?
+*(Coming soon)*
 
-SpeckBot is your personal AI assistant that runs locally and connects to your favorite chat platforms. It features:
+## Features
 
-- **Multi-Channel**: Telegram, Discord, CLI
-- **Tool Execution**: Read/write files, run commands, search the web, and more
-- **Persistent Memory**: Conversations are archived automatically, with summary context preserved
-- **Security**: Block sensitive data, confirm dangerous operations
-- **Flexible Providers**: OpenRouter, Anthropic, OpenAI, NVIDIA NIM, and many more
+- **Multi-channel** — Telegram, Discord, CLI with unified message routing
+- **Tool execution** — File I/O, shell commands, web search/fetch, scheduling, subagents
+- **Persistent memory** — Auto-archiving conversations with LLM summary context
+- **Security-first** — Block patterns, ASK-before-execution for dangerous tools
+- **Multi-provider** — LiteLLM-backed: OpenRouter, Anthropic, OpenAI, NVIDIA, and more
+- **Background services** — Heartbeat, idle monologue, daily memory cleanup (Dream), cron jobs
+- **MCP support** — Connect any Model Context Protocol server at runtime
+- **Skills system** — Drop in SKILL.md files to teach the agent new capabilities
 
-## Quick Start
+## Quick Install Guide
 
-### 1. Install
+### Download and Install
 
 ```bash
-pip install speckbot-ai
-# or
 git clone https://github.com/radityanaren/speckbot
 cd speckbot
 pip install -e .
 ```
 
-### 2. Initialize
+### Configuration
 
-```bash
-speckbot onboard
-```
+1. **Generate config and workspace:**
+   ```bash
+   speckbot onboard
+   ```
+   This creates `config.json`, `.env`, and the workspace directory.
 
-This creates:
-- `config.json` - Main configuration
-- `.env` - API keys and secrets
-- `workspace/` - Working directory
+2. **Add secrets to `.env`:**
+   ```
+   OPENROUTER_API_KEY=sk-or-...
+   TELEGRAM_TOKEN=12345:ABC...
+   ```
 
-### 3. Configure
+3. **Edit `config.json`:** Reference secrets with `${VAR_NAME}` syntax:
+   ```json
+   {
+     "agents": {
+       "defaults": {
+         "provider": "provider_a",
+         "workspace": "~/.speckbot/workspace"
+       }
+     },
+     "providers": [
+       {
+         "name": "provider_a",
+         "apiKey": "${OPENROUTER_API_KEY}",
+         "apiBase": "https://openrouter.ai/api/v1",
+         "model": "anthropic/claude-sonnet-4-5"
+       }
+     ],
+     "channels": {
+       "telegram": {
+         "enabled": true,
+         "token": "${TELEGRAM_TOKEN}"
+       }
+     }
+   }
+   ```
 
-Edit `config.json` to add your provider and channels:
+4. **Run:**
+   ```bash
+   speckbot gateway
+   ```
+
+## config.json
+
+The root config object uses Pydantic and supports `${VAR}` interpolation from `.env` files (default: same directory as `config.json`).
+
+### Provider Types
+
+Each provider in the `providers` list has a `type`:
+
+| Type | Description |
+|------|-------------|
+| `"custom"` | OpenAI-compatible endpoint (direct) |
+| `"litellm"` | LiteLLM-backed — auto-routes to any provider via model string |
+
+### Adding Multiple Providers
 
 ```json
 {
-  "agents": {
-    "defaults": {
-      "provider": "provider_a",
-      "workspace": "~/.speckbot/workspace"
-    }
-  },
   "providers": [
     {
       "name": "provider_a",
-      "apiKey": "${YOUR_API_KEY}",
+      "type": "litellm",
+      "apiKey": "${OPENROUTER_API_KEY}",
       "apiBase": "https://openrouter.ai/api/v1",
       "model": "anthropic/claude-sonnet-4-5"
+    },
+    {
+      "name": "provider_b",
+      "type": "custom",
+      "apiKey": "${LOCAL_API_KEY}",
+      "apiBase": "http://localhost:8000/v1",
+      "model": "local-model"
     }
-  ],
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "token": "${TELEGRAM_TOKEN}"
-    }
+  ]
+}
+```
+
+Set the active provider in `agents.defaults.provider`.
+
+### Key Sections
+
+| Key | Description |
+|-----|-------------|
+| `agents.defaults` | Active provider, token limits, temperature, iterations |
+| `providers[]` | List of configured LLM backends |
+| `channels` | Per-channel config (telegram, discord, etc.) |
+| `tools` | Web search, bash exec, MCP servers, workspace restriction |
+| `services` | Heartbeat, monologue, cron, dream settings |
+| `security` | Block patterns, ASK tools, audit log |
+| `gateway` | Host/port for WebSocket gateway |
+
+## Sessions
+
+SpeckBot uses a **conveyor belt** session system — messages flow through three layers:
+
+1. **Session messages** — Recent conversation in active context
+2. **Summary lines** — Compressed context shown in system prompt
+3. **JSONL archive** — Full archived messages stored on disk
+
+### How Compaction Works
+
+Two-step archiving triggers when the estimated prompt exceeds token thresholds:
+
+- **Step 1** (soft clip): When prompt > `active_window_tokens × tool_truncation_percent%` — archives the most recent tool call block (assistant tool_calls + results) and summarizes it
+- **Step 2** (hard clip): When prompt > `active_window_tokens × 105%` — clips oldest lines regardless of source (messages + summaries) until under target
+
+### Session Storage
+
+Sessions are stored as JSONL in `<workspace>/sessions/`. Archives go to `<workspace>/archive/`.
+
+### Config Controls
+
+```json
+{
+  "active_window_tokens": 65536,
+  "tool_truncation_percent": 50,
+  "summary_result_max_chars": 100,
+  "summary_assistant_max_chars": 150
+}
+```
+
+### Commands
+
+- `/new` — Clear session, archive existing messages
+- `/flush` — Compact oldest 90% via LLM, keep newest 10%
+- `/memories` — List saved knowledges and projects
+
+## Security System
+
+SpeckBot has a two-layer security gateway that runs on input, tool calls, and output.
+
+### BLOCK — Filter Patterns
+
+Regex patterns that silently block messages or tool output.
+
+```json
+{
+  "security": {
+    "enabled": true,
+    "blocked_patterns": ["SSN_REGEX_HERE", "API_KEY_PATTERN"]
   }
 }
 ```
 
-Add your keys to `.env`:
+When blocked:
+- User input → "Your message was blocked by security filters"
+- Tool output → "[Output filtered by security]"
+- AI output → "[BLOCKED - sensitive content]"
 
+### ASK — User Confirmation
+
+Tools in `ask_tools` require explicit `yes`/`no` from the user before execution. This blocks ALL other processing until resolved.
+
+```json
+{
+  "security": {
+    "enabled": true,
+    "ask_tools": ["edit_file", "write_file", "bash"]
+  }
+}
 ```
-OPENROUTER_API_KEY=sk-or-...
-TELEGRAM_TOKEN=12345:ABC...
+
+Default ask tools: `edit_file`, `write_file`, `bash`.
+
+### How It Works
+
+1. **Input scan** — User message checked against `blocked_patterns`
+2. **Tool scan** — Before execution, tool name + params checked
+3. **Output scan** — AI response scanned before sending to user
+4. **Tool result scan** — Tool output scanned before AI sees it
+
+### Adding Custom Detectors
+
+Create a detector in `speckbot/security/detectors/` extending `DetectorBase`:
+```python
+class MyDetector(DetectorBase):
+    def scan(self, text: str) -> SecurityResult:
+        # Return SecurityResult(is_blocked=True, reason="...") if matched
 ```
 
-### 4. Run
+## Services
 
-```bash
-speckbot gateway
+### Monologue
+
+Self-talk when idle. After `monologue_idle_seconds` of no user messages, the agent sends itself a prompt and responds (like talking to itself). If it wants to message you, it uses the `message` tool.
+
+```json
+{
+  "services": {
+    "monologue_enabled": true,
+    "monologue_idle_seconds": 300,
+    "monologue_prompt": "Hey, been a while — what are you working on?",
+    "monologue_visible": true
+  }
+}
 ```
 
-## Commands
+### Dream
 
-| Command | Description |
-|---------|-------------|
-| `/new` | Start a new session |
-| `/help` | Show help |
-| `/memories` | List saved knowledges and projects |
-| `/flush` | Compact conversation history |
-| `/stop` | Stop running tasks |
-| `/restart` | Restart the bot |
+Daily memory cleanup. Runs at startup and every `dream_sleep_interval_hours`:
+
+1. For each session, archives oldest 90% via LLM consolidation
+2. Restarts the SpeckBot process
+
+```json
+{
+  "services": {
+    "dream_enabled": true,
+    "dream_max_memory_lines": 200,
+    "dream_deduplicate": true,
+    "dream_convert_dates": true,
+    "dream_sleep_interval_hours": 24
+  }
+}
+```
+
+### Cron
+
+Schedule tasks that run through the agent loop. Use the `cron` tool to create/manage jobs:
+
+```python
+# Via agent: cron(action="create", name="daily-report", schedule="0 9 * * *", message="Generate daily summary")
+```
+
+```json
+{
+  "services": {
+    "cron_enabled": true
+  }
+}
+```
+
+### Heartbeat
+
+Periodic check-in that executes configured tasks through the agent and optionally delivers the response to a channel.
+
+```json
+{
+  "services": {
+    "heartbeat_enabled": true,
+    "heartbeat_interval_seconds": 1800
+  }
+}
+```
+
+## Skills
+
+Skills are `SKILL.md` files that teach the agent capabilities. They support metadata frontmatter for requirements and "always-on" flag.
+
+### Adding Skills
+
+1. **Drop into workspace:** Create `<workspace>/skills/<name>/SKILL.md`
+2. **Via the agent:** Use `save_knowledge` / `save_project` tools
+3. **Built-in:** Shipped in `speckbot/skills/`
+
+### SKILL.md Format
+
+```markdown
+---
+description: "What this skill does"
+always: false
+metadata: |
+  {
+    "speckbot": {
+      "requires": {
+        "bins": ["ffmpeg"],
+        "env": ["OPENAI_API_KEY"]
+      }
+    }
+  }
+---
+
+Skill instructions go here...
+```
+
+- `always: true` — Auto-included in system prompt every turn
+- `requires.bins` — CLI tools that must be on PATH
+- `requires.env` — Environment variables that must be set
 
 ## Tools
 
-Built-in tools available to the agent:
+### Python Tools
 
 | Tool | Description |
 |------|-------------|
@@ -99,124 +319,191 @@ Built-in tools available to the agent:
 | `edit_file` | Edit file using diff |
 | `list_dir` | List directory contents |
 | `bash` | Execute shell command |
-| `web_search` | Search the web |
+| `web_search` | Search the web (Brave) |
 | `web_fetch` | Fetch URL content |
 | `message` | Send message to user |
-| `spawn` | Spawn a subagent |
+| `spawn` | Spawn a background subagent |
 | `cron` | Manage scheduled tasks |
 
-## Memory System
+### Adding Custom Python Tools
 
-SpeckBot maintains three layers of memory:
+1. Create `speckbot/tools/mytool.py`:
+   ```python
+   from speckbot.tools.base import Tool
 
-1. **Session** - Full message history in context
-2. **Summary** - Summarized lines in system prompt
-3. **Archive** - Old messages in JSONL files
+   class MyTool(Tool):
+       @property
+       def name(self): return "my_tool"
+       @property
+       def description(self): return "Does something"
+       @property
+       def parameters(self): return {"type": "object", "properties": {...}}
+       async def execute(self, **kwargs): return "result"
+   ```
 
-When the conversation gets too long, oldest messages are archived automatically. The summary preserves context across archives.
+2. Register in `AgentLoop._register_default_tools()`:
+   ```python
+   self.tools.register(MyTool())
+   ```
 
-### Saving Memories
+### MCP Servers
 
-The agent can save memories using:
-
-- `save_knowledge(topic, content, file_type)` - Save factual knowledge
-- `save_project(topic, content, file_type)` - Save project context
-- `list_memories()` - List all saved memories
-
-## Configuration
-
-### Agent Settings
+MCP servers are configured in `config.json`. Empty by default — add your own:
 
 ```json
 {
-  "agents": {
-    "defaults": {
-      "workspace": "~/.speckbot/workspace",
-      "provider": "provider_a",
-      "max_output_tokens": 8192,
-      "active_window_tokens": 65536,
-      "tool_truncation_percent": 50,
-      "tool_result_max_chars": 10000,
-      "max_tool_iterations": 40,
-      "temperature": 0.7
+  "tools": {
+    "mcp_servers": {
+      "my-server": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@some/mcp-server"],
+        "env": {},
+        "tool_timeout": 30,
+        "enabled_tools": ["*"]
+      }
     }
   }
 }
 ```
 
-### Tools Settings
+**Server types:** `stdio`, `sse`, `streamableHttp`
+
+Connections are lazy — established on first message, not at startup.
+
+## Channels
+
+### Existing Channels
+
+| Channel | Config Key | Transport |
+|---------|-----------|-----------|
+| Telegram | `telegram` | Long polling |
+| Discord | `discord` | Gateway WebSocket |
+| CLI | `cli` | stdin/stdout |
+
+### Channel Config
 
 ```json
 {
-  "tools": {
-    "web_search_provider": "brave",
-    "web_search_api_key": "${BRAVE_API_KEY}",
-    "exec_timeout": 60,
-    "restrict_to_workspace": false,
-    "mcp_servers": {}
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "${TELEGRAM_TOKEN}",
+      "allow_from": ["*"],
+      "proxy": null,
+      "reply_to_message": false,
+      "group_policy": "mention"
+    }
   }
 }
 ```
 
-### Services Settings
+### Adding Custom Channels
+
+1. Create `speckbot/bus/channels/mychannel.py`:
+   ```python
+   from speckbot.bus.channels.base import BaseChannel
+
+   class MyChannel(BaseChannel):
+       name = "mychannel"
+       display_name = "My Channel"
+
+       async def start(self): ...
+       async def stop(self): ...
+       async def send(self, msg: OutboundMessage): ...
+   ```
+
+2. Register in `speckbot/bus/channels/registry.py` or use entry_points for plugins.
+
+## Providers
+
+### Existing Providers
+
+SpeckBot supports any provider LiteLLM supports, plus direct OpenAI-compatible endpoints:
+
+| Type | Examples |
+|------|----------|
+| `"litellm"` | `anthropic/claude-*`, `openai/gpt-*`, `gemini/*`, etc. |
+| `"custom"` | Any OpenAI-compatible endpoint (local LLM, vLLM, etc.) |
+
+### Provider Config
 
 ```json
 {
-  "services": {
-    "heartbeat_enabled": true,
-    "heartbeat_interval_seconds": 1800,
-    "monologue_enabled": false,
-    "monologue_idle_seconds": 300,
-    "monologue_prompt": "Hey, been a while — what are you working on?",
-    "cron_enabled": true,
-    "dream_enabled": false,
-    "dream_sleep_interval_hours": 24
-  }
+  "providers": [
+    {
+      "name": "my-provider",
+      "type": "litellm",
+      "apiKey": "${API_KEY}",
+      "apiBase": "https://api.example.com/v1",
+      "model": "provider/model-name",
+      "extra_headers": {}
+    }
+  ]
 }
 ```
 
-### Security Settings
+### Adding Custom Provider Classes
 
-```json
-{
-  "security": {
-    "enabled": false,
-    "blocked_patterns": [],
-    "ask_tools": ["edit_file", "write_file", "exec"],
-    "audit_log": null
-  }
-}
-```
+For providers needing special handling, create a subclass in `speckbot/providers/` and set `"type"` to the class name.
 
-## Workspace
+## Structure
 
-The workspace directory contains:
+After reorganization, the codebase is organized as:
 
 ```
-workspace/
-├── sessions/           # Conversation sessions (JSONL)
-├── archive/            # Archived messages
-├── knowledges/         # Saved knowledge (topic/notes.md)
-├── projects/          # Saved project context
-├── cron/               # Scheduled tasks
-├── AGENTS.md           # Agent instructions
-├── MEMORY.md           # Memory system index
-└── JOURNAL.md          # Inner monologue journal
-```
-
-## Development
-
-### Running Tests
-
-```bash
-pytest
-```
-
-### Code Style
-
-```bash
-ruff check speckbot/
-ruff format speckbot/
+speckbot/
+├── agent/              # Core orchestration
+│   ├── loop.py         # AgentLoop + MessageHandler
+│   ├── context.py      # System prompt + message builder
+│   ├── subagent.py     # Background subagent spawning
+│   ├── security.py     # Security service wrapper
+│   └── definitions.py  # Help text, bot commands
+├── bus/                # Message routing
+│   ├── events.py       # InboundMessage, OutboundMessage
+│   ├── queue.py        # Async message queues
+│   └── channels/       # Telegram, Discord, CLI
+├── cli/                # Command-line interface
+│   ├── commands.py     # Typer CLI (onboard, gateway, status)
+│   └── templates/      # Workspace templates (AGENTS.md, etc.)
+├── config/             # Configuration
+│   ├── schema.py       # Pydantic models
+│   ├── loader.py       # Config loading + .env interpolation
+│   └── paths.py        # Path helpers
+├── providers/          # LLM backends
+│   ├── base.py         # LLMProvider interface
+│   ├── litellm_provider.py
+│   ├── custom_provider.py
+│   └── registry.py     # Provider specs
+├── security/           # Security system
+│   ├── __init__.py     # SecurityGateway
+│   └── detectors/      # BlockDetector, AskDetector
+├── services/           # Background services
+│   ├── timer.py        # UnifiedTimer (coordinates all)
+│   ├── monologue/      # Idle self-talk
+│   ├── heartbeat/      # Periodic check-in
+│   ├── cron/           # Scheduled tasks
+│   └── dream/          # Daily memory cleanup
+├── session/            # Conversation state
+│   ├── manager.py      # Session, SessionManager
+│   └── memory.py       # MemoryConsolidator, MemoryStore
+├── skills/             # Agent skills
+│   ├── __init__.py     # SkillsLoader
+│   └── <skill dirs>    # SKILL.md files
+├── tools/              # Tool implementations
+│   ├── base.py         # Tool abstract class
+│   ├── registry.py     # ToolRegistry
+│   ├── bash.py
+│   ├── filesystem.py
+│   ├── web.py
+│   ├── message.py
+│   ├── spawn.py
+│   ├── cron.py
+│   └── mcp.py          # MCP client
+└── utils/              # Shared utilities
+    ├── helpers.py
+    ├── constants.py
+    └── evaluator.py
 ```
 
 ## License
