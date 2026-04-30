@@ -2,11 +2,28 @@
 
 ## About
 
-*(Coming soon)*
+ >  *IT'S ALIVE!* - Frankenstein 1931
+
+Made only because I want to satisfy myself with my own agents, but come up with a cool memory system, monologue system, and sessions(I think), check it out, you might like it. Highly moddable, and modular, your agents can understand it too, fork it, abuse it, whatever you want :)
+
+## Table of Contents
+- [About](#about)
+- [Features](#features)
+- [Quick Install Guide](#quick-install-guide)
+- [config.json](#configjson)
+- [Commands](#commands)
+- [Sessions](#sessions)
+- [Security System](#security-system)
+- [Services](#services)
+- [Skills](#skills)
+- [Tools](#tools)
+- [Channels](#channels)
+- [Providers](#providers)
+- [Structure](#structure)
 
 ## Features
 
-- **Multi-channel** — Telegram, Discord, CLI with unified message routing
+- **Multi-channel** — Telegram, Discord with unified message routing
 - **Tool execution** — File I/O, shell commands, web search/fetch, scheduling, subagents
 - **Persistent memory** — Auto-archiving conversations with LLM summary context
 - **Security-first** — Block patterns, ASK-before-execution for dangerous tools
@@ -24,6 +41,8 @@ git clone https://github.com/radityanaren/speckbot
 cd speckbot
 pip install -e .
 ```
+
+> **⚠️ Windows Users:** You need to install [Git Bash](https://git-scm.com/download/win) to use the bash tool.
 
 ### Configuration
 
@@ -408,7 +427,6 @@ Connections are lazy — established on first message, not at startup.
 |---------|-----------|-----------|
 | Telegram | `telegram` | Long polling |
 | Discord | `discord` | Gateway WebSocket |
-| CLI | `cli` | stdin/stdout |
 
 ### Channel Config
 
@@ -534,12 +552,3 @@ speckbot/
     ├── constants.py
     └── evaluator.py
 ```
-
-## License
-
-MIT
-
-## Links
-
-- [GitHub](https://github.com/radityanaren/speckbot)
-- [Issues](https://github.com/radityanaren/speckbot/issues)
