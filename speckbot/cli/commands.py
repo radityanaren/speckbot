@@ -571,6 +571,7 @@ def gateway(
             "prompt": config.services.monologue_prompt,
             "visible": config.services.monologue_visible,
         },
+        projects_root=Path(config.agents.defaults.projects_root).expanduser() if config.agents.defaults.projects_root else None,
     )
 
     # Set cron callback (needs agent)
@@ -716,6 +717,7 @@ def gateway(
             "dream": {
                 "enabled": config.services.dream_enabled,
                 "sleepIntervalHours": config.services.dream_sleep_interval_hours,
+                "projects_root": config.agents.defaults.projects_root,
             },
         }
 

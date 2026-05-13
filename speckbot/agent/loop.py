@@ -74,6 +74,7 @@ class AgentLoop:
         hooks_config: dict[str, Any] | None = None,
         monologue_config: dict | None = None,
         unified_timer=None,  # For resetting monologue counter on user messages
+        projects_root: Path | None = None,
     ):
         from speckbot.session.memory import SummaryConfig
         from speckbot.config.schema import BashToolConfig, WebSearchConfig
@@ -105,7 +106,7 @@ class AgentLoop:
             str, dict
         ] = {}  # session_key -> {tool_name, params, tool_call_id}
 
-        self.context = ContextBuilder(workspace, security=self.security)
+        self.context = ContextBuilder(workspace, security=self.security, projects_root=projects_root)
         self.sessions = session_manager or SessionManager(workspace)
 
         # Initialize monologue system after sessions
@@ -168,6 +169,7 @@ class AgentLoop:
             get_tool_definitions=self.tools.get_definitions,
             tool_truncation_percent=tool_truncation_percent,
             summary_config=mc_summary_config,
+            projects_root=projects_root,
         )
         self._register_default_tools()
 

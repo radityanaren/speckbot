@@ -40,6 +40,7 @@ class AgentDefaults(Base):
     temperature: float = DEFAULT_AGENT_TEMPERATURE
     max_tool_iterations: int = DEFAULT_MAX_TOOL_ITERATIONS
     reasoning_effort: str | None = None
+    projects_root: str = ""
     # Path to .env file for secrets (defaults to config.json directory)
     env_file_path: str | None = Field(
         default=None,

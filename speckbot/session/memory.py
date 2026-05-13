@@ -13,6 +13,15 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from loguru import logger
 
+# Optional: rapidfuzz for fuzzy search
+_has_rapidfuzz = False
+try:
+    from rapidfuzz import fuzz as _fuzz, process as _fuzz_process
+
+    _has_rapidfuzz = True
+except ImportError:
+    pass
+
 from speckbot.utils.helpers import (
     ensure_dir,
     estimate_message_tokens,
@@ -634,22 +643,17 @@ _AGENT_MEMORY_TOOLS = [
         "type": "function",
         "function": {
             "name": "save_project",
-            "description": "Save project info to a topic folder. Topics are broad project names, files within describe specific aspects (e.g., 'strategy.md', 'setup.md').",
+            "description": "Save/update SPECKBOT.md in a project folder under projects_root. The project folder must exist (user's own project).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "topic": {
                         "type": "string",
-                        "description": "Project/folder name (e.g., 'trading-bot', 'speckbot'). Use lowercase, hyphens allowed.",
+                        "description": "Relative path to project folder from projects_root (e.g., 'code/repos/speckbot', 'audio/songs').",
                     },
                     "content": {
                         "type": "string",
-                        "description": "The project information to save. Can be multiple paragraphs.",
-                    },
-                    "file_type": {
-                        "type": "string",
-                        "description": "Filename without .md (e.g., 'strategy', 'setup', 'notes'). Choose based on content type. Default: 'notes'",
-                        "default": "notes",
+                        "description": "Project information/notes to save to SPECKBOT.md.",
                     },
                 },
                 "required": ["topic", "content"],
@@ -667,6 +671,23 @@ _AGENT_MEMORY_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "fuzzy_search_memory",
+            "description": "Fuzzy search MEMORY.md for matching entries. Use this to find similar results to any query (handles typos).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query to match against MEMORY.md entries.",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 
@@ -680,6 +701,7 @@ _MEMORY_TOOL_HANDLERS = {
     "save_knowledge": "_handle_save_knowledge",
     "save_project": "_handle_save_project",
     "list_memories": "_handle_list_memories",
+    "fuzzy_search_memory": "_handle_fuzzy_search_memory",
 }
 
 
@@ -721,10 +743,12 @@ class MemoryStore:
     # Use constants for thresholds
     _max_failures = MAX_CONSOLIDATION_FAILURES
 
-    def __init__(self, workspace: Path):
+    def __init__(self, workspace: Path, projects_root: Path | None = None):
         self.workspace = workspace
         self.knowledges_dir = ensure_dir(workspace / "knowledges")
-        self.projects_dir = ensure_dir(workspace / "projects")
+        self.projects_root = projects_root
+        if self.projects_root:
+            self.projects_root.mkdir(parents=True, exist_ok=True)
         self._consecutive_failures = 0
 
     # === Knowledge Management ===
@@ -760,38 +784,76 @@ class MemoryStore:
         """Check if a knowledge file exists in a topic folder."""
         return (self.knowledges_dir / topic / f"{file_type}.md").exists()
 
-    # === Project Management ===
+    # === Project Management (SPECKBOT.md in user's projects_root) ===
 
     def list_projects(self) -> list[str]:
-        """List all project topic names (folder names)."""
-        if not self.projects_dir.exists():
+        """List all project paths by scanning for SPECKBOT.md markers."""
+        if not self.projects_root or not self.projects_root.exists():
             return []
-        return sorted([d.name for d in self.projects_dir.iterdir() if d.is_dir()])
+        projects = []
+        for sp_path in self.projects_root.rglob("SPECKBOT.md"):
+            rel = sp_path.parent.relative_to(self.projects_root)
+            projects.append(str(rel))
+        return sorted(projects)
 
-    def list_project_files(self, topic: str) -> list[str]:
-        """List all files in a project topic folder."""
-        topic_dir = self.projects_dir / topic
-        if not topic_dir.exists():
-            return []
-        return sorted([f.stem for f in topic_dir.iterdir() if f.is_file() and f.suffix == ".md"])
-
-    def get_project(self, topic: str, file_type: str = "notes") -> str | None:
-        """Get project content from a specific file in a topic folder."""
-        path = self.projects_dir / topic / f"{file_type}.md"
+    def get_project(self, project_path: str) -> str | None:
+        """Get SPECKBOT.md content from a project folder."""
+        if not self.projects_root:
+            return None
+        path = (self.projects_root / project_path / "SPECKBOT.md").resolve()
+        # Security: ensure it's within projects_root
+        try:
+            path.relative_to(self.projects_root.resolve())
+        except ValueError:
+            return None
         if path.exists():
             return path.read_text(encoding="utf-8")
         return None
 
-    def save_project(self, topic: str, content: str, file_type: str = "notes") -> None:
-        """Save project info to a topic folder with descriptive filename."""
-        folder = ensure_dir(self.projects_dir / topic)
-        path = folder / f"{file_type}.md"
+    def save_project(self, project_path: str, content: str) -> None:
+        """Save/update SPECKBOT.md in a project folder."""
+        if not self.projects_root:
+            raise ValueError("projects_root not configured")
+        folder = (self.projects_root / project_path).resolve()
+        # Security: ensure it's within projects_root
+        try:
+            folder.relative_to(self.projects_root.resolve())
+        except ValueError:
+            raise ValueError(f"Path outside projects_root: {project_path}")
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / "SPECKBOT.md"
         path.write_text(content, encoding="utf-8")
-        logger.info("Saved project: {}/{}", topic, file_type)
+        logger.info("Saved project marker: {}/SPECKBOT.md", project_path)
 
-    def project_exists(self, topic: str, file_type: str = "notes") -> bool:
-        """Check if a project file exists in a topic folder."""
-        return (self.projects_dir / topic / f"{file_type}.md").exists()
+    def project_exists(self, project_path: str) -> bool:
+        """Check if SPECKBOT.md exists in a project folder."""
+        if not self.projects_root:
+            return False
+        return (self.projects_root / project_path / "SPECKBOT.md").exists()
+
+    # === Fuzzy Search ===
+
+    def fuzzy_search_memory(self, query: str, limit: int = 5) -> str:
+        """Fuzzy search MEMORY.md for matching entries using RapidFuzz."""
+        if not _has_rapidfuzz:
+            return "rapidfuzz not installed. Run: pip install rapidfuzz"
+
+        memory_file = self.workspace / "MEMORY.md"
+        if not memory_file.exists():
+            return ""
+
+        content = memory_file.read_text(encoding="utf-8")
+        lines = [l for l in content.split("\n") if l.strip().startswith("- ")]
+        if not lines:
+            return ""
+
+        results = _fuzz_process.extract(query, lines, scorer=_fuzz.WRatio, limit=limit)
+        matching = [f"  {r[0]}  (score: {r[1]}%)" for r in results if r[1] > 50]
+        if not matching:
+            return f"No close matches for '{query}' in MEMORY.md."
+
+        return f"**Fuzzy search: {query}**\n" + "\n".join(matching)
+
 
     # === History (legacy support) ===
 
@@ -816,9 +878,18 @@ class MemoryStore:
         parts.append(
             "knowledges/ - Folder for factual/technical knowledge. Use save_knowledge tool to save."
         )
-        parts.append(
-            "projects/ - Folder for project-specific context. Use save_project tool to save.\n"
-        )
+        if self.projects_root:
+            parts.append(
+                f"projects_root ({self.projects_root}) - User project folders. "
+                "Projects are tracked via SPECKBOT.md inside each project folder. "
+                "Use save_project tool to save/update a project's SPECKBOT.md."
+            )
+        else:
+            parts.append(
+                "projects/ - Folder for project-specific context. Use save_project tool to save."
+            )
+        parts.append("MEMORY.md - Index of all knowledges and projects. Use fuzzy_search_memory tool to search.")
+        parts.append("")
 
         # List available knowledges
         knowledges = self.list_knowledges()
@@ -832,17 +903,13 @@ class MemoryStore:
                     parts.append(f"- {topic}")
             parts.append("\nUse read_file to load: `{workspace}/knowledges/<topic>/<file>.md`")
 
-        # List available projects
+        # List available projects (from SPECKBOT.md markers)
         projects = self.list_projects()
         if projects:
-            parts.append("\n## Projects\n")
-            for topic in projects:
-                files = self.list_project_files(topic)
-                if files:
-                    parts.append(f"- {topic}: {', '.join(files)}")
-                else:
-                    parts.append(f"- {topic}")
-            parts.append("\nUse read_file to load: `{workspace}/projects/<topic>/<file>.md`")
+            parts.append("\n## Project Tracked\n")
+            for project_path in projects:
+                parts.append(f"- {project_path}")
+            parts.append("\nUse read_file to load: `{projects_root}/<project-path>/SPECKBOT.md`")
 
         return "\n".join(parts) if parts else ""
 
@@ -982,14 +1049,11 @@ class MemoryStore:
         """Handle save_project tool call."""
         topic = args.get("topic", "")
         content = args.get("content", "")
-        file_type = args.get("file_type", "notes")
         if not topic or not content:
             return "Error: topic and content are required"
         topic = normalize_path_component(topic)
-        file_type = normalize_path_component(file_type)
-        self.save_project(topic, content, file_type)
-        return f"Saved to projects/{topic}/{file_type}.md"
-
+        self.save_project(topic, content)
+        
     def _handle_list_memories(self, args: dict) -> str:
         """Handle list_memories tool call."""
         knowledges = self.list_knowledges()
@@ -1007,14 +1071,19 @@ class MemoryStore:
 
         if projects:
             parts.append(f"Projects ({len(projects)}):")
-            for topic in projects:
-                files = self.list_project_files(topic)
-                files_str = ", ".join(files) if files else "(empty)"
-                parts.append(f"  • {topic}: {files_str}")
+            for project_path in projects:
+                parts.append(f"  • {project_path}")
         else:
             parts.append("Projects: (none)")
 
         return "\n".join(parts)
+
+    def _handle_fuzzy_search_memory(self, args: dict) -> str:
+        """Handle fuzzy_search_memory tool call."""
+        query = args.get("query", "")
+        if not query:
+            return "Error: query is required"
+        return self.fuzzy_search_memory(query)
 
     def _fail_or_raw_archive(self, messages: list[dict]) -> bool:
         """Increment failure count; after threshold, raw-archive messages and return True."""
@@ -1051,8 +1120,9 @@ class MemoryConsolidator:
         get_tool_definitions: Callable[[], list[dict[str, Any]]],
         tool_truncation_percent: int = 50,
         summary_config: SummaryConfig | None = None,
+        projects_root: Path | None = None,
     ):
-        self.store = MemoryStore(workspace)
+        self.store = MemoryStore(workspace, projects_root=projects_root)
         self.provider = provider
         self.model = model
         self.sessions = sessions

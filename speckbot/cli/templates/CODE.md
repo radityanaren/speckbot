@@ -179,12 +179,14 @@ Three-layer memory:
 
 **MemoryStore** - Persistent storage for agent:
 
-- `knowledges/` - Factual/technical knowledge folders
-- `projects/` - Project-specific context folders
+- `knowledges/` - Factual/technical knowledge folders (unchanged)
+- `projects_root` (config) - User project folders tracked via `SPECKBOT.md` markers inside each project
+- `MEMORY.md` - Index rebuilt by Dream, lists all knowledges and projects
+- `fuzzy_search_memory(query)` - Uses RapidFuzz to search MEMORY.md for matching entries
 
-Tools: `save_knowledge`, `save_project`, `list_memories`
+Tools: `save_knowledge`, `save_project`, `list_memories`, `fuzzy_search_memory`
 
-### 7. Tool Registry & Tools (`speckbot/agent/tools/`)
+### 7. Tool Registry & Tools (`speckbot/tools/`)
 
 **ToolRegistry** - Manages tool registration and execution:
 

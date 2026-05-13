@@ -25,7 +25,8 @@ class DreamEngine:
     Dream: Memory index builder for SpeckBot.
 
     Runs on startup to rebuild MEMORY.md index from knowledges/projects.
-    The old compaction logic has moved to /flush command.
+    Knowledges are scanned from workspace/knowledges/.
+    Projects are scanned from projects_root/ via SPECKBOT.md markers.
     """
 
     def __init__(self, workspace: Path, config: dict[str, Any] | None = None):
@@ -34,7 +35,8 @@ class DreamEngine:
 
         # Directories
         self.knowledges_dir = workspace / "knowledges"
-        self.projects_dir = workspace / "projects"
+        projects_root_str = config.get("projects_root", "") if config else ""
+        self.projects_root = Path(projects_root_str).expanduser() if projects_root_str else None
         self.memory_file = workspace / "MEMORY.md"
         self.sessions_dir = workspace / "sessions"
 
@@ -74,15 +76,12 @@ class DreamEngine:
                         mtime = max(f.stat().st_mtime for f in md_files)
                         memory.last_updated[topic_dir.name] = datetime.fromtimestamp(mtime)
 
-        # Scan projects
-        if self.projects_dir.exists():
-            for topic_dir in self.projects_dir.iterdir():
-                if topic_dir.is_dir():
-                    md_files = list(topic_dir.glob("*.md"))
-                    memory.projects[topic_dir.name] = md_files
-                    if md_files:
-                        mtime = max(f.stat().st_mtime for f in md_files)
-                        memory.last_updated[topic_dir.name] = datetime.fromtimestamp(mtime)
+        # Scan projects via SPECKBOT.md markers in projects_root
+        if self.projects_root and self.projects_root.exists():
+            for sp_path in self.projects_root.rglob("SPECKBOT.md"):
+                project_name = str(sp_path.parent.relative_to(self.projects_root))
+                memory.projects[project_name] = [sp_path]
+                memory.last_updated[project_name] = datetime.fromtimestamp(sp_path.stat().st_mtime)
 
         return memory
 
@@ -107,11 +106,9 @@ class DreamEngine:
         if memory.projects:
             lines.append("## Projects")
             for topic in sorted(memory.projects.keys()):
-                files = memory.projects[topic]
                 date = memory.last_updated.get(topic)
                 date_str = f" [[date:{date.strftime('%Y-%m-%d')}]]" if date else ""
-                files_str = ", ".join(f.stem for f in files) if files else "(empty)"
-                lines.append(f"- [[projects:{topic}]]{date_str}: {files_str}")
+                lines.append(f"- [[projects:{topic}]]{date_str}")
             lines.append("")
 
         self.memory_file.write_text("\n".join(lines), encoding="utf-8")

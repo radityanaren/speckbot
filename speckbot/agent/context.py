@@ -29,9 +29,9 @@ class ContextBuilder:
         "JOURNAL.md": "File: Your private inner monologue journal entries.",
     }
 
-    def __init__(self, workspace: Path, security=None):
+    def __init__(self, workspace: Path, security=None, projects_root: Path | None = None):
         self.workspace = workspace
-        self.memory = MemoryStore(workspace)
+        self.memory = MemoryStore(workspace, projects_root=projects_root)
         self.skills = SkillsLoader(workspace)
         self.security = security  # Shared security service
         self.monologue_enabled = False  # Set by AgentLoop if enabled
@@ -123,6 +123,15 @@ Skills with available="false" need dependencies installed first.
 ## Platform
 - {platform_info}
 
+## Workspace Structure
+- knowledges/ — Factual info. Use save_knowledge to create/save notes here.
+- projects_root — Your project folders. Projects are tracked via SPECKBOT.md inside each.
+- MEMORY.md — Index of all knowledges and projects. Use fuzzy_search_memory to search.
+- AGENTS.md, JOURNAL.md — Your behavioral guidelines and private journal.
+
+Use save_project(topic, content) to save/update SPECKBOT.md in a project.
+When you work in a new folder, check if SPECKBOT.md exists. If not, ask user.
+
 ## Security
 - Dangerous commands/patterns are blocked.
 - If output shows "[Output filtered by security]", it was blocked. Don't retry.
@@ -134,10 +143,11 @@ Skills with available="false" need dependencies installed first.
 ## Saving Memories
 If there's anything substantial, ask user if they want to save this conversation, when it's time to save something:
 1. Ask: knowledge or project?
-2. Ask: topic folder name
-3. Ask: file name
-4. Call save_knowledge(topic, content, file_type) or save_project(topic, content, file_type)
+2. Ask: topic folder name (project path from projects_root for projects)
+3. Call save_knowledge(topic, content) or save_project(topic, content)
 IMPORTANT: You must provide the 'content' parameter - summarize the relevant conversation into clean markdown.
+
+For projects, content goes into SPECKBOT.md inside the project folder.
 
 ## Self-aware
 You are an AI assistant wrapped in python, look at "CODE.md" in your workspace to learn about how you work.
