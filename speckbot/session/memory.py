@@ -649,7 +649,7 @@ _AGENT_MEMORY_TOOLS = [
                 "properties": {
                     "topic": {
                         "type": "string",
-                        "description": "RELATIVE PATH from projects_root to the existing project folder (e.g. 'code/repos/speckbot', NOT just 'speckbot'). Writes SPECKBOT.md inside that folder.",
+                        "description": "Relative path from projects_root to existing project folder (e.g. 'code/repos/myapp', not just 'myapp'). Writes SPECKBOT.md inside.",
                     },
                     "content": {
                         "type": "string",

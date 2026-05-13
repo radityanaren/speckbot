@@ -130,20 +130,10 @@ Skills with available="false" need dependencies installed first.
 - MEMORY.md — Index of all knowledges and projects. Use fuzzy_search_memory to search.
 - AGENTS.md, JOURNAL.md — Your behavioral guidelines and private journal.
 
-## Project Tracking (CRITICAL — Read Carefully)
-Projects are tracked by placing a SPECKBOT.md file INSIDE the EXISTING project folder.
-
-When saving a project:
-- save_project(topic, content) writes SPECKBOT.md to {projects_root_path}/<topic>/SPECKBOT.md
-- The "topic" parameter is the RELATIVE PATH from projects_root to the project folder
-- Example: if project is at {projects_root_path}/code/repos/linuxaudiolaptop, use topic="code/repos/linuxaudiolaptop"
-- NEVER create new folders. Use the EXISTING folder path relative to projects_root.
-- Check where the project actually lives before calling save_project.
-
-When working in a new folder:
-1. Check if SPECKBOT.md exists in that folder
-2. If not, ask user: "Should I track this as a project?"
-3. If yes, call save_project(topic="<relative-path>", content=...) using the actual folder path
+## Project Tracking
+- save_project(topic, content) writes SPECKBOT.md into an EXISTING project folder
+- topic = relative path from projects_root (e.g. "code/repos/myapp", NOT just "myapp")
+- Never create new folders. Use the actual folder path.
 
 ## Security
 - Dangerous commands/patterns are blocked.
