@@ -887,12 +887,8 @@ class MessageHandler:
 
             if projects:
                 lines.append("📁 Projects:")
-                for topic in projects:
-                    files = store.list_project_files(topic)
-                    if files:
-                        lines.append(f"  • {topic} ({', '.join(files)})")
-                    else:
-                        lines.append(f"  • {topic}")
+                for project_path in projects:
+                    lines.append(f"  • {project_path}")
             else:
                 lines.append("📁 Projects: (empty)")
 
