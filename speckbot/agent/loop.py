@@ -187,6 +187,8 @@ class AgentLoop:
         self, session_key: str, tool_name: str, params: dict, tool_call_id: str = None
     ) -> None:
         """Set a pending confirmation for a tool. Only one at a time."""
+        if self.has_pending_confirmation(session_key):
+            return  # Don't overwrite — user hasn't responded yet
         self._pending_confirmation = {
             session_key: {
                 "tool_name": tool_name,
@@ -345,6 +347,11 @@ class AgentLoop:
 
                     # If tool requires confirmation, ask user INSTANTLY (no LLM)
                     if tool_call.name in ask_tools:
+                        # Skip if already waiting for confirmation
+                        if self.has_pending_confirmation(session_key):
+                            logger.debug("Already pending confirmation for {}, skipping tool call {}", session_key, tool_call.name)
+                            break
+
                         # Set pending confirmation (blocks all LLM input)
                         self.set_pending_confirmation(
                             session_key=session_key,
@@ -373,6 +380,12 @@ class AgentLoop:
 
                         # Return empty result to LLM (don't wait for response)
                         result = "⏳ Waiting for user confirmation..."
+
+                        # Add the result so LLM sees it, then break — no more tools this turn
+                        messages = self.context.add_tool_result(
+                            messages, tool_call.id, tool_call.name, result
+                        )
+                        break  # Stop processing remaining tool calls — pending confirmation is active
                     else:
                         # Execute normally
                         result = await self.tools.execute(
