@@ -126,7 +126,7 @@ Skills with available="false" need dependencies installed first.
 
 ## Workspace Structure
 - knowledges/ — Factual info. Use save_knowledge to create/save notes here.
-- projects_root ({projects_root_path}) — Your project folders. Tracked via SPECKBOT.md inside each.
+- {projects_root_path} — Your project folders. Tracked via SPECKBOT.md inside each.
 - MEMORY.md — Index of all knowledges and projects. Use fuzzy_search_memory to search.
 - AGENTS.md, JOURNAL.md — Your behavioral guidelines and private journal.
 
