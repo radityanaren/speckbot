@@ -110,6 +110,7 @@ Skills with available="false" need dependencies installed first.
 
 """
 
+        projects_root_path = str(self.memory.projects_root.expanduser().resolve()) if self.memory.projects_root else "(not configured)"
         return f"""# You are a helpful AI assistant.
 
 ## Runtime
@@ -125,7 +126,7 @@ Skills with available="false" need dependencies installed first.
 
 ## Workspace Structure
 - knowledges/ — Factual info. Use save_knowledge to create/save notes here.
-- projects_root — Your project folders. Projects are tracked via SPECKBOT.md inside each.
+- projects_root ({projects_root_path}) — Your project folders. Tracked via SPECKBOT.md inside each.
 - MEMORY.md — Index of all knowledges and projects. Use fuzzy_search_memory to search.
 - AGENTS.md, JOURNAL.md — Your behavioral guidelines and private journal.
 
@@ -150,7 +151,7 @@ IMPORTANT: You must provide the 'content' parameter - summarize the relevant con
 For projects, content goes into SPECKBOT.md inside the project folder.
 
 ## Self-aware
-You are an AI assistant wrapped in python, look at "CODE.md" in your workspace to learn about how you work.
+CODE.md is your architecture blueprint. Read it to understand how you work.
 
 ## Guidelines
 - Read before edit. Re-read after write.
