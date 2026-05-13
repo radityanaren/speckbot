@@ -127,11 +127,27 @@ Each provider in the `providers` list has a `type`:
 
 Set the active provider in `agents.defaults.provider`.
 
+### Project Tracking
+
+Set `agents.defaults.projects_root` to your projects folder (e.g. `~/Documents/workspace/projects`).
+The agent tracks projects by placing `SPECKBOT.md` inside each project folder.
+Dream scans for `SPECKBOT.md` files and rebuilds MEMORY.md index.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "projects_root": "~/Documents/workspace/projects"
+    }
+  }
+}
+```
+
 ### Key Sections
 
 | Key | Description |
 |-----|-------------|
-| `agents.defaults` | Active provider, token limits, temperature, iterations |
+| `agents.defaults` | Active provider, token limits, temperature, iterations, projects_root |
 | `providers[]` | List of configured LLM backends |
 | `channels` | Per-channel config (telegram, discord, etc.) |
 | `tools` | Web search, bash exec, MCP servers, workspace restriction |
@@ -372,6 +388,10 @@ Skill instructions go here...
 | `message` | Send message to user |
 | `spawn` | Spawn a background subagent |
 | `cron` | Manage scheduled tasks |
+| `save_knowledge` | Save notes to knowledges |
+| `save_project` | Save SPECKBOT.md to a project folder |
+| `list_memories` | List all knowledges and projects |
+| `fuzzy_search_memory` | Fuzzy search MEMORY.md (handles typos) |
 
 ### Adding Custom Python Tools
 
