@@ -23,14 +23,12 @@ Made only because I want to satisfy myself with my own agents, but come up with 
 
 ## Features
 
-- **Multi-channel** — Telegram, Discord with unified message routing
-- **Tool execution** — File I/O, shell commands, web search/fetch, scheduling, subagents
-- **Persistent memory** — Auto-archiving conversations with LLM summary context
-- **Security-first** — Block patterns, ASK-before-execution for dangerous tools
-- **Multi-provider** — LiteLLM-backed: OpenRouter, Anthropic, OpenAI, NVIDIA, and more
-- **Background services** — Heartbeat, idle monologue, daily memory cleanup (Dream), cron jobs
-- **MCP support** — Connect any Model Context Protocol server at runtime
-- **Skills system** — Drop in SKILL.md files to teach the agent new capabilities
+- **Extensible** : Highly moddable and extensible features such as tools, channels, providers
+- **Enhanced Memory** : Conveyor Belt memory style, indexed knowledges and projects based memory, fuzzysearch memory index etc
+- **Security Detectors** : Block regex patterns, ASK-before-execution for dangerous tools
+- **Background services** : Idle monologue, dream, cron jobs, heartbeat
+- **MCP support** : Connect any Model Context Protocol server at runtime
+- **Skills system** : Drop in SKILL.md files to teach the agent new capabilities
 
 ## Quick Install Guide
 
@@ -42,7 +40,8 @@ cd speckbot
 pip install -e .
 ```
 
-> **⚠️ Windows Users:** You need to install [Git Bash](https://git-scm.com/download/win) to use the bash tool.
+> [!WARNING]
+> **Windows Users:** You need to install [Git Bash](https://git-scm.com/download/win) to use the bash tool.
 
 ### Configuration
 
@@ -65,6 +64,7 @@ pip install -e .
        "defaults": {
          "provider": "provider_a",
          "workspace": "~/.speckbot/workspace"
+         "projects_root": "~/.speckbot/workspace/projects"
        }
      },
      "providers": [
@@ -129,15 +129,15 @@ Set the active provider in `agents.defaults.provider`.
 
 ### Project Tracking
 
-Set `agents.defaults.projects_root` to your projects folder (e.g. `~/Documents/workspace/projects`).
-The agent tracks projects by placing `SPECKBOT.md` inside each project folder.
+Set `agents.defaults.projects_root` to your projects folder (default: `~/.speckbot/workspace/projects`).
+The agent tracks projects via `SPECKBOT.md` inside each project folder.
 Dream scans for `SPECKBOT.md` files and rebuilds MEMORY.md index.
 
 ```json
 {
   "agents": {
     "defaults": {
-      "projects_root": "~/Documents/workspace/projects"
+      "projects_root": "~/.speckbot/workspace/projects"
     }
   }
 }
