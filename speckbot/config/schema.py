@@ -28,6 +28,7 @@ class AgentDefaults(Base):
     """Default agent configuration."""
 
     workspace: str = "~/.speckbot/workspace"
+    projects_root: str = "~/.speckbot/workspace/projects"
     provider: str = "provider_a"  # Must reference a provider name from providers list
     max_output_tokens: int = DEFAULT_MAX_TOKENS_AGENT
     active_window_tokens: int = DEFAULT_CONTEXT_WINDOW_TOKENS
@@ -40,7 +41,6 @@ class AgentDefaults(Base):
     temperature: float = DEFAULT_AGENT_TEMPERATURE
     max_tool_iterations: int = DEFAULT_MAX_TOOL_ITERATIONS
     reasoning_effort: str | None = None
-    projects_root: str = "~/.speckbot/workspace/projects"
     # Path to .env file for secrets (defaults to config.json directory)
     env_file_path: str | None = Field(
         default=None,
